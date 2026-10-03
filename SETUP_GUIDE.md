@@ -55,6 +55,9 @@ const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 Supabase Authentication 帳號；每位教師／助教仍須先在 Authentication → Users
 建立相同 Email 的帳號，登入後即具有相同的管理權限。
 
+如果教師後台顯示已有小組，但學生端的分組卡片沒有組員，請重新執行這支
+整合 migration，讓 `get_group_roster` 查詢函式更新為目前版本。
+
 ### 學年度與期中／期末
 
 執行升級檔後，教師後台的「新增學年度」只會建立空白的期中與期末期別，不會複製舊名單。

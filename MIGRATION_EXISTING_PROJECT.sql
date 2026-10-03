@@ -95,6 +95,21 @@ create policy "teacher manage staff_members" on staff_members for all
   using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
 
+-- 確保查看分組名單會從目前期別的 students 回傳組員。
+create or replace function get_group_roster(p_term_id uuid)
+returns table (group_no int, name text, topic text, member_name text)
+language sql security definer as $$
+  select g.group_no, g.name, g.topic, s.name as member_name
+  from groups g
+  left join students s
+    on s.term_id = g.term_id
+   and s.group_no = g.group_no
+  where g.term_id = p_term_id
+  order by g.group_no, s.name;
+$$;
+
+grant execute on function get_group_roster(uuid) to anon, authenticated;
+
 -- 3. 加入學年度，並保留既有資料的舊學年度標記。
 alter table terms add column if not exists academic_year text;
 update terms
@@ -133,4 +148,3 @@ begin
   end if;
 end
 $$;
-
