@@ -1,0 +1,1003 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>文創課程活動中控台</title>
+<script src="config.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script>
+  tailwind.config = {
+    theme: { extend: {
+      colors: { canvas:'#F6F0E3', ink:'#2E3131', muted:'#687070', brand:'#416D85', 'brand-dark':'#34586C', sun:'#F8B831', line:'#E5DDD0' },
+      boxShadow: { soft:'0 18px 50px rgba(46,49,49,.08)', lift:'0 12px 30px rgba(65,109,133,.16)' }
+    }}
+  };
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; background:#F6F0E3; color:#2E3131; font-family:"Noto Sans TC","PingFang TC",system-ui,sans-serif; }
+  .glass { background:rgba(255,255,255,.72); backdrop-filter: blur(16px); }
+  .nav-btn { transition:.2s ease; }
+  .nav-btn.active { color:#416D85; background:#EAF1F4; box-shadow: inset 0 -3px 0 #416D85; }
+  .nav-btn:hover:not(.active) { background:#F4F7F8; }
+  .view { display:none; animation: rise .28s ease both; }
+  .view.active { display:block; }
+  @keyframes rise { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+  .modal-backdrop { background:rgba(46,49,49,.38); backdrop-filter: blur(8px); }
+  .score-btn { transition:.15s ease; }
+  .score-btn.selected { color:#fff; background:#416D85; border-color:#416D85; transform:translateY(-1px); }
+</style>
+</head>
+<body>
+<div id="app" class="min-h-screen">
+
+  <!-- ===================== HEADER / NAV ===================== -->
+  <header class="sticky top-0 z-30 border-b border-line/80 glass">
+    <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+      <div class="flex min-w-0 items-center gap-3">
+        <div class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-brand text-xl text-white shadow-lift">文</div>
+        <div class="min-w-0">
+          <p class="truncate text-xs font-semibold tracking-[.2em] text-brand">CLASSROOM HUB</p>
+          <h1 class="truncate text-lg font-black sm:text-xl">文化創意產業・活動中控台</h1>
+        </div>
+      </div>
+      <div id="user-chip" class="hidden items-center gap-3 sm:flex">
+        <div class="text-right">
+          <p id="user-label" class="text-sm font-bold"></p>
+          <p id="user-dept" class="text-xs text-muted"></p>
+        </div>
+        <button id="logout-btn" class="rounded-full border border-line bg-white px-3 py-2 text-xs font-bold text-muted transition hover:border-brand hover:text-brand">登出</button>
+      </div>
+    </div>
+    <nav class="relative z-30 mx-auto flex max-w-7xl flex-wrap gap-1 overflow-visible px-4 pb-3 sm:px-6">
+      <button class="nav-btn active whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold" data-view="group-list-view">查看分組名單</button>
+      <button class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" data-view="self-eval-view">小組自評</button>
+      <button class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" data-view="voting-view">分組投票</button>
+      <button class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" data-view="report-view">成果報告</button>
+      <div class="relative">
+        <button id="teacher-menu-btn" class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted">教師專用 ▾</button>
+        <div id="teacher-menu" class="absolute left-0 top-full z-40 mt-2 hidden min-w-48 rounded-2xl border border-line bg-white p-2 shadow-soft">
+          <button id="admin-btn" class="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-muted hover:bg-canvas hover:text-brand">教材編輯區</button>
+          <button id="course-import-btn" class="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-muted hover:bg-canvas hover:text-brand">課程資料匯入</button>
+          <button id="teacher-logout-btn" class="hidden w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-red-600 hover:bg-red-50">教師登出</button>
+        </div>
+      </div>
+    </nav>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+
+    <section class="mb-8 flex flex-wrap items-center justify-between gap-3 rounded-3xl border border-line bg-white p-5 shadow-soft">
+      <div><p class="text-xs font-bold text-muted">目前課程・期別</p><p id="current-term-label" class="mt-1 text-lg font-black">載入中…</p></div>
+      <div class="grid grid-cols-2 gap-3 text-center">
+        <div class="rounded-2xl bg-canvas p-3 px-5"><p id="stat-groups" class="text-2xl font-black text-brand">–</p><p class="text-xs text-muted">個小組</p></div>
+        <div class="rounded-2xl bg-canvas p-3 px-5"><p id="stat-votes" class="text-2xl font-black text-brand">–</p><p class="text-xs text-muted">已投票人數</p></div>
+      </div>
+    </section>
+
+    <section id="student-progress" class="mb-8 hidden rounded-3xl border border-line bg-white p-5 shadow-soft">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div><p class="text-xs font-bold text-brand">YOUR PROGRESS</p><h2 class="mt-1 text-xl font-black">課程操作進度</h2></div>
+        <p id="progress-summary" class="text-sm font-bold text-muted"></p>
+      </div>
+      <div id="progress-steps" class="mt-5 grid gap-3 sm:grid-cols-3"></div>
+    </section>
+
+    <!-- 分組名單 -->
+    <section id="group-list-view" class="view active">
+      <div class="mb-5"><p class="text-sm font-bold text-brand">01 / GROUPS</p><h3 class="mt-1 text-2xl font-black">查看分組名單</h3></div>
+      <div id="group-grid" class="grid gap-5 md:grid-cols-2 lg:grid-cols-3"></div>
+    </section>
+
+    <!-- 小組自評 -->
+    <section id="self-eval-view" class="view">
+      <div class="mb-5"><p class="text-sm font-bold text-brand">02 / PEER REVIEW</p><h3 class="mt-1 text-2xl font-black">小組自評</h3></div>
+      <div id="eval-container"></div>
+    </section>
+
+    <!-- 分組投票 -->
+    <section id="voting-view" class="view">
+      <div class="mb-5"><p class="text-sm font-bold text-brand">03 / FAVORITE TEAM</p><h3 class="mt-1 text-2xl font-black">分組投票</h3><p class="mt-2 text-sm text-muted">選出你最喜歡的兩個組別，為精彩的提案加油。</p></div>
+      <div id="voting-container"></div>
+    </section>
+
+    <!-- 成果報告（學生可見） -->
+    <section id="report-view" class="view">
+      <div class="mb-5"><p class="text-sm font-bold text-brand">04 / REPORT</p><h3 class="mt-1 text-2xl font-black">成果報告</h3><p class="mt-2 text-sm text-muted">投票排名與同學匿名回饋，為保護隱私不顯示姓名或組別。</p></div>
+      <div id="report-container" class="grid gap-5 lg:grid-cols-[1.05fr_.95fr]"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ===================== 學生登入 ===================== -->
+<div id="login-modal" class="fixed inset-0 z-50 grid place-items-center modal-backdrop p-4">
+  <div class="w-full max-w-sm rounded-[2rem] bg-white p-7 shadow-2xl">
+    <div class="mb-6"><p class="text-sm font-bold text-brand">STUDENT LOGIN</p><h2 class="mt-2 text-2xl font-black">進入課程空間</h2><p id="login-sub" class="mt-2 text-sm text-muted">請輸入學號與姓名以驗證身分。</p></div>
+    <form id="login-form" class="space-y-3">
+      <select id="login-course" class="w-full rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-brand"><option value="1142_CCI">1142 文化創意產業</option></select>
+      <input id="login-id" required placeholder="學號（例如：1101）" class="w-full rounded-xl border border-line px-4 py-3 outline-none focus:border-brand" />
+      <input id="login-name" required placeholder="姓名（例如：王小明）" class="w-full rounded-xl border border-line px-4 py-3 outline-none focus:border-brand" />
+      <p id="login-error" class="hidden rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600"></p>
+      <button class="w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white hover:bg-brand-dark">進入課程空間</button>
+    </form>
+    <div class="mt-5 border-t border-line pt-5 text-center">
+      <p class="mb-2 text-xs text-muted">教師或 TA 請先登入以匯入名冊</p>
+      <button id="login-teacher-btn" type="button" class="rounded-xl border border-brand px-4 py-2.5 text-sm font-bold text-brand transition hover:bg-brand/5">教師／TA 登入並匯入名冊</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 教師密碼驗證 ===================== -->
+<div id="admin-modal" class="fixed inset-0 z-50 hidden grid place-items-center modal-backdrop p-4">
+  <div class="w-full max-w-sm rounded-[2rem] bg-white p-7 shadow-2xl">
+    <div class="mb-6"><p class="text-sm font-bold text-brand">TEACHER / TA ACCESS</p><h2 class="mt-2 text-2xl font-black">教師／TA 登入</h2><p class="mt-2 text-sm text-muted">請使用 Supabase Authentication 建立的 Email 與密碼。</p></div>
+    <form id="admin-form" class="space-y-3">
+      <input id="admin-email" type="email" required placeholder="老師 Email" class="w-full rounded-xl border border-line px-4 py-3 outline-none focus:border-brand" />
+      <input id="admin-password" type="password" required placeholder="密碼" class="w-full rounded-xl border border-line px-4 py-3 outline-none focus:border-brand" />
+      <p id="admin-error" class="hidden text-sm font-bold text-red-600"></p>
+      <div class="flex gap-3"><button type="button" id="admin-cancel" class="flex-1 rounded-xl border border-line px-4 py-3 font-bold text-muted">返回學生登入</button><button class="flex-1 rounded-xl bg-brand px-4 py-3 font-bold text-white">登入</button></div>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== 教材編輯區 ===================== -->
+<div id="admin-panel" class="fixed inset-0 z-40 hidden overflow-y-auto bg-canvas">
+  <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+    <div class="mb-8 flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-bold text-brand">CONTROL ROOM</p><h2 class="text-3xl font-black">教材編輯區</h2><p id="admin-whoami" class="mt-1 text-xs text-muted"></p></div>
+      <div class="flex gap-3"><button id="print-btn" class="rounded-xl bg-sun px-4 py-3 text-sm font-black text-ink hover:brightness-95">下載成果報告 PDF</button><button id="admin-close" class="rounded-xl border border-line bg-white px-4 py-3 text-sm font-bold text-muted">關閉</button></div>
+    </div>
+    <div id="teacher-controls"></div>
+    <div id="admin-content"></div>
+  </div>
+</div>
+
+<!-- ===================== 課程資料匯入（獨立頁） ===================== -->
+<div id="course-import-panel" class="fixed inset-0 z-40 hidden overflow-y-auto bg-canvas">
+  <div class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <div class="mb-8 flex items-center justify-between gap-4">
+      <div><p class="text-sm font-bold text-brand">COURSE DATA IMPORT</p><h2 class="text-3xl font-black">課程資料匯入</h2><p id="import-whoami" class="mt-1 text-xs text-muted"></p></div>
+      <button id="course-import-close" class="shrink-0 rounded-xl border border-line bg-white px-4 py-3 text-sm font-bold text-muted">關閉</button>
+    </div>
+    <div id="course-import-content"></div>
+  </div>
+</div>
+
+<input id="roster-file" type="file" accept=".csv,.xlsx,.xls" class="hidden" />
+<div id="toast" class="fixed bottom-5 left-1/2 z-[60] hidden -translate-x-1/2 rounded-full bg-ink px-5 py-3 text-sm font-bold text-white shadow-lift"></div>
+<div id="print-report" style="position:fixed;left:-10000px;top:0;"></div>
+
+<script>
+/* ============================================================================
+   設定區：換成你自己的 Supabase 專案資訊（Settings → API）
+============================================================================ */
+const COURSE_ID = "1142_CCI";
+const COURSE_NAME = "1142 文化創意產業";
+const DEFAULT_ACADEMIC_YEAR = "1151";
+const VOTING_RULES = { maxVotes: 2, allowSelfGroupVote: true };
+const DELETE_CONFIRM_CODE = 7;
+const STUDENT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const STUDENT_LAST_ACTIVE_KEY = "cci-student-last-active-at";
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+function toast(msg){ const el=$("toast"); el.textContent=msg; el.classList.remove("hidden"); setTimeout(()=>el.classList.add("hidden"),2800); }
+
+/* ---------------------------------------------------------------------------
+   App 狀態（記憶體內；共用資料一律來自 Supabase，不再用 localStorage 當資料庫）
+--------------------------------------------------------------------------- */
+let activeTermKey = "midterm";     // 目前開放給學生的期別
+let viewingTermKey = "midterm";    // 教師後台目前檢視的期別（可能與 active 不同）
+let activeAcademicYear = DEFAULT_ACADEMIC_YEAR;
+let viewingAcademicYear = DEFAULT_ACADEMIC_YEAR;
+let currentTerm = null;            // { id, course_id, course_name, term_key }
+let currentUser = JSON.parse(localStorage.getItem("cci-current-user") || "null"); // 僅裝置端便利快取
+let groupRoster = [];              // [{group_no,name,topic,member_name}]
+let teacherEntry = "admin";
+let teacherSession = null;
+let studentIdleTimer = null;
+
+function groupsGrouped(){
+  const map = new Map();
+  for(const row of groupRoster){
+    if(!map.has(row.group_no)) map.set(row.group_no, {group_no:row.group_no, name:row.name, topic:row.topic, members:[]});
+    if(row.member_name) map.get(row.group_no).members.push(row.member_name);
+  }
+  return [...map.values()].sort((a,b)=>a.group_no-b.group_no);
+}
+function myGroupNo(){ return currentUser?.group_no; }
+function hasGroupAssignment(){ return Number.isInteger(Number(myGroupNo())) && Number(myGroupNo()) > 0; }
+
+function markStudentActivity(){
+  if(currentUser) localStorage.setItem(STUDENT_LAST_ACTIVE_KEY, String(Date.now()));
+}
+
+function clearStudentSession(){
+  if(studentIdleTimer) { clearInterval(studentIdleTimer); studentIdleTimer = null; }
+  localStorage.removeItem("cci-current-user");
+  localStorage.removeItem(STUDENT_LAST_ACTIVE_KEY);
+}
+
+function startStudentIdleGuard(){
+  if(studentIdleTimer) clearInterval(studentIdleTimer);
+  markStudentActivity();
+  studentIdleTimer = setInterval(() => {
+    const lastActive = Number(localStorage.getItem(STUDENT_LAST_ACTIVE_KEY));
+    if(currentUser && lastActive && Date.now() - lastActive > STUDENT_IDLE_TIMEOUT_MS){
+      clearStudentSession();
+      alert("為保護你的帳號，頁面閒置超過 30 分鐘，請重新登入。");
+      location.reload();
+    }
+  }, 15000);
+}
+
+async function refreshStudentProgress(){
+  const panel = $("student-progress");
+  if(!panel || !currentUser || !currentTerm) return;
+  const [{ data: evaluation }, { data: vote }] = await Promise.all([
+    sb.rpc("get_my_evaluation", { p_term_id: currentTerm.id, p_student_id: currentUser.student_id }),
+    sb.rpc("get_my_vote", { p_term_id: currentTerm.id, p_student_id: currentUser.student_id })
+  ]);
+  const group = groupsGrouped().find(item => item.group_no === myGroupNo());
+  const steps = [
+    { label:"確認分組與主題", detail: group?.topic && group.topic !== "尚未設定小組主題" ? "已完成" : "請確認小組主題", done: Boolean(group?.topic && group.topic !== "尚未設定小組主題") },
+    { label:"完成小組自評", detail: evaluation?.length ? "已送出，可查看或修改" : "尚未送出", done: Boolean(evaluation?.length) },
+    { label:"完成分組投票", detail: vote?.length ? "已送出，可重新選擇" : "尚未送出", done: Boolean(vote?.length) }
+  ];
+  const completed = steps.filter(step => step.done).length;
+  $("progress-summary").textContent = `${completed} / ${steps.length} 項已完成`;
+  $("progress-steps").innerHTML = steps.map(step => `
+    <button type="button" data-progress-target="${step.label}" class="flex items-center gap-3 rounded-2xl border ${step.done ? "border-brand/20 bg-brand/5" : "border-line bg-canvas"} p-4 text-left transition hover:border-brand">
+      <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full ${step.done ? "bg-brand text-white" : "bg-white text-muted"} font-black">${step.done ? "✓" : "○"}</span>
+      <span><span class="block text-sm font-black">${step.label}</span><span class="mt-1 block text-xs text-muted">${step.detail}</span></span>
+    </button>`).join("");
+  document.querySelectorAll("[data-progress-target]").forEach(button => button.onclick = () => {
+    const target = button.dataset.progressTarget;
+    openView(target === "完成小組自評" ? "self-eval-view" : target === "完成分組投票" ? "voting-view" : "group-list-view");
+  });
+  panel.classList.remove("hidden");
+}
+
+/* ---------------------------------------------------------------------------
+   期別載入
+--------------------------------------------------------------------------- */
+async function loadActiveTermKey(){
+  const { data } = await sb.from("course_settings").select("active_term_key,active_academic_year").eq("course_id", COURSE_ID).maybeSingle();
+  activeTermKey = data?.active_term_key || "midterm";
+  activeAcademicYear = data?.active_academic_year || DEFAULT_ACADEMIC_YEAR;
+}
+async function fetchTermByKey(termKey, academicYear = activeAcademicYear){
+  const { data } = await sb.from("terms").select("*").eq("course_id", COURSE_ID).eq("academic_year", academicYear).eq("term_key", termKey).maybeSingle();
+  return data;
+}
+async function loadGroupRoster(termId){
+  const { data, error } = await sb.rpc("get_group_roster", { p_term_id: termId });
+  groupRoster = error ? [] : (data || []);
+}
+async function refreshCurrentTermData(){
+  currentTerm = await fetchTermByKey(activeTermKey, activeAcademicYear);
+  if(currentTerm){ await loadGroupRoster(currentTerm.id); }
+  $("current-term-label").textContent = currentTerm
+    ? `${activeAcademicYear}｜${COURSE_NAME}｜${activeTermKey==="midterm"?"期中":"期末"}`
+    : `${COURSE_NAME}｜本期尚未匯入名冊`;
+  $("stat-groups").textContent = currentTerm ? groupsGrouped().length : "0";
+  await refreshVoteCountStat();
+}
+async function refreshVoteCountStat(){
+  if(!currentTerm){ $("stat-votes").textContent="0"; return; }
+  const { data } = await sb.rpc("get_vote_totals", { p_term_id: currentTerm.id });
+  const total = (data||[]).reduce((sum,row)=>sum+Number(row.votes||0),0);
+  $("stat-votes").textContent = Math.round(total / 2);
+}
+
+/* ---------------------------------------------------------------------------
+   登入 / 登出（學生）
+--------------------------------------------------------------------------- */
+async function tryRestoreSession(){
+  await loadActiveTermKey();
+  await refreshCurrentTermData();
+  const lastActive = Number(localStorage.getItem(STUDENT_LAST_ACTIVE_KEY));
+  if(currentUser && lastActive && Date.now() - lastActive > STUDENT_IDLE_TIMEOUT_MS){
+    clearStudentSession();
+    currentUser = null;
+  }
+  if(currentUser && currentTerm){
+    // 確認這位使用者仍存在於「目前開放期別」的名冊中，避免期別切換後身分失效
+    const { data } = await sb.rpc("login_check", { p_term_id: currentTerm.id, p_student_id: currentUser.student_id, p_name: currentUser.name });
+    if(data && data.length){
+      currentUser = data[0];
+      afterLogin();
+      return;
+    }
+  }
+  currentUser = null;
+  localStorage.removeItem("cci-current-user");
+  $("login-modal").classList.remove("hidden");
+}
+function afterLogin(){
+  $("login-modal").classList.add("hidden");
+  $("user-chip").classList.remove("hidden"); $("user-chip").classList.add("flex");
+  $("user-label").textContent = `${currentUser.student_id} ${currentUser.name}・第 ${currentUser.group_no} 組`;
+  $("user-dept").textContent = `${currentUser.dept||""}｜${COURSE_NAME}`;
+  startStudentIdleGuard();
+  renderGroups();
+  refreshStudentProgress();
+}
+$("login-form").onsubmit = async e => {
+  e.preventDefault();
+  $("login-error").classList.add("hidden");
+  if(!currentTerm){ $("login-error").textContent="老師尚未匯入本期名冊，請聯絡老師。"; $("login-error").classList.remove("hidden"); return; }
+  const id = $("login-id").value.trim(), name = $("login-name").value.trim();
+  const { data, error } = await sb.rpc("login_check", { p_term_id: currentTerm.id, p_student_id: id, p_name: name });
+  if(error || !data || !data.length){ $("login-error").textContent="找不到相符的學號與姓名，請確認後再試。"; $("login-error").classList.remove("hidden"); return; }
+  currentUser = data[0];
+  localStorage.setItem("cci-current-user", JSON.stringify(currentUser));
+  afterLogin();
+};
+$("logout-btn").onclick = () => { clearStudentSession(); location.reload(); };
+
+["pointerdown", "keydown", "touchstart", "scroll"].forEach(eventName => {
+  window.addEventListener(eventName, markStudentActivity, { passive: true });
+});
+
+/* ---------------------------------------------------------------------------
+   分組名單（含主題編輯：只有同組同學可修改）
+--------------------------------------------------------------------------- */
+function renderGroups(){
+  const groups = groupsGrouped();
+  $("group-grid").innerHTML = groups.map(g => {
+    const mine = currentUser && g.group_no === myGroupNo();
+    return `<article class="relative overflow-hidden rounded-3xl border ${mine?'border-sun ring-2 ring-sun/30':'border-line'} bg-white p-6 shadow-soft transition hover:-translate-y-1 hover:shadow-lift">
+      <div class="absolute right-0 top-0 h-20 w-20 rounded-bl-[3rem] ${mine?'bg-sun/20':'bg-brand/5'}"></div>
+      <div class="relative flex items-start justify-between gap-3">
+        <span class="rounded-full ${mine?'bg-sun text-ink':'bg-brand/10 text-brand'} px-3 py-1 text-xs font-black">${esc(g.name)}</span>
+        ${mine?'<span class="text-xs font-black text-brand">您的組別</span>':''}
+      </div>
+      <div class="mt-5 flex items-center gap-2">
+        <h4 id="topic-display-${g.group_no}" class="text-lg font-black">${esc(g.topic)}</h4>
+        ${mine?`<button type="button" data-edit-topic="${g.group_no}" title="編輯報告主題" class="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-white text-base text-brand hover:border-brand hover:bg-brand/5">✎</button>`:''}
+      </div>
+      ${mine?`<div id="topic-editor-${g.group_no}" class="mt-4 hidden"><label class="mb-2 block text-xs font-bold text-muted">編輯報告主題（只有本組同學可修改）</label>
+        <div class="flex gap-2"><input id="topic-input-${g.group_no}" value="${esc(g.topic)}" class="min-w-0 flex-1 rounded-xl border border-line px-3 py-2 text-sm outline-none focus:border-brand">
+        <button type="button" data-save-topic="${g.group_no}" class="rounded-xl bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-dark">儲存</button>
+        <button type="button" data-cancel-topic="${g.group_no}" class="rounded-xl border border-line px-3 py-2 text-xs font-bold text-muted hover:border-brand hover:text-brand">取消</button></div></div>`:''}
+      <div class="mt-5 flex flex-wrap gap-2">${g.members.map(m=>`<span class="rounded-full border border-line bg-canvas px-3 py-1.5 text-xs font-bold text-muted">${esc(m)}</span>`).join("")}</div>
+    </article>`;
+  }).join("") || (currentUser && !hasGroupAssignment()
+    ? `<div class="rounded-3xl border border-sun/40 bg-sun/10 p-6 shadow-soft"><p class="text-sm font-bold text-brand">名冊已建立</p><h4 class="mt-2 text-xl font-black">目前尚未完成分組</h4><p class="mt-2 text-sm leading-6 text-muted">老師完成分組並更新名冊後，這裡會顯示小組名單；小組自評與分組投票目前暫不開放。</p></div>`
+    : `<p class="text-sm text-muted">目前期別尚無分組資料。</p>`);
+
+  document.querySelectorAll("[data-edit-topic]").forEach(btn => btn.onclick = () => {
+    const id = btn.dataset.editTopic;
+    $(`topic-display-${id}`).classList.add("hidden"); btn.classList.add("hidden");
+    $(`topic-editor-${id}`).classList.remove("hidden"); $(`topic-input-${id}`).focus();
+  });
+  document.querySelectorAll("[data-cancel-topic]").forEach(btn => btn.onclick = () => {
+    const id = btn.dataset.cancelTopic;
+    $(`topic-editor-${id}`).classList.add("hidden"); $(`topic-display-${id}`).classList.remove("hidden");
+    document.querySelector(`[data-edit-topic="${id}"]`).classList.remove("hidden");
+  });
+  document.querySelectorAll("[data-save-topic]").forEach(btn => btn.onclick = async () => {
+    const groupNo = Number(btn.dataset.saveTopic);
+    const topic = $(`topic-input-${groupNo}`).value.trim();
+    if(!topic){ toast("報告主題不可為空白"); return; }
+    const { error } = await sb.rpc("update_group_topic", { p_term_id: currentTerm.id, p_group_no: groupNo, p_student_id: currentUser.student_id, p_topic: topic });
+    if(error){ toast("更新失敗："+error.message); return; }
+    toast("報告主題已更新");
+    await loadGroupRoster(currentTerm.id);
+    renderGroups(); renderReport(); refreshStudentProgress();
+  });
+}
+
+/* ---------------------------------------------------------------------------
+   小組自評
+--------------------------------------------------------------------------- */
+async function renderEval(){
+  if(!hasGroupAssignment()){
+    $("eval-container").innerHTML = `<div class="rounded-3xl border border-sun/40 bg-sun/10 p-8 text-center shadow-soft"><h4 class="text-xl font-black">尚未完成分組</h4><p class="mt-2 text-sm leading-6 text-muted">完成分組後，老師更新名冊，你就可以進行小組自評。</p></div>`;
+    return;
+  }
+  const { data } = await sb.rpc("get_my_evaluation", { p_term_id: currentTerm.id, p_student_id: currentUser.student_id });
+  const existing = data && data.length ? data[0] : null;
+  if(existing){
+    $("eval-container").innerHTML = `<div class="rounded-3xl border border-brand/20 bg-white p-8 text-center shadow-soft">
+      <div class="mx-auto grid h-16 w-16 place-items-center rounded-full bg-brand/10 text-3xl">✓</div>
+      <h4 class="mt-4 text-2xl font-black">自評已送出</h4>
+      <p class="mt-2 text-muted">送出時間：${esc(new Date(existing.submitted_at).toLocaleString("zh-TW"))}</p>
+      <button id="edit-eval" class="mt-6 rounded-xl border border-line px-4 py-3 text-sm font-bold text-brand">查看已送出的內容</button></div>`;
+    $("edit-eval").onclick = async () => renderEvalFormWithIds(await loadMyGroupMembersWithId(), existing);
+    return;
+  }
+  renderEvalFormWithIds(await loadMyGroupMembersWithId(), { scores:{}, feedback:"" });
+}
+async function loadMyGroupMembersWithId(){
+  const { data, error } = await sb.rpc("get_my_group_members", { p_term_id: currentTerm.id, p_student_id: currentUser.student_id });
+  return error ? [] : (data || []);
+}
+function renderEvalFormWithIds(members, existing){
+  $("eval-container").innerHTML = `<form id="eval-form" class="rounded-3xl border border-line bg-white p-5 shadow-soft sm:p-7">
+    <div class="mb-6 rounded-2xl bg-canvas p-4"><p class="text-sm font-black text-brand">第 ${myGroupNo()} 組・合作夥伴評量</p><p class="mt-1 text-sm text-muted">請為每位組員選擇 0 到 10 分。</p></div>
+    <div class="space-y-4">${members.map(m=>`<div class="rounded-2xl border border-line p-4">
+      <div class="flex items-center justify-between gap-3"><div><p class="font-black">${esc(m.name)} ${m.student_id===currentUser.student_id?'<span class="text-xs font-bold text-brand">（自己）</span>':''}</p><p class="text-xs text-muted">${esc(m.dept||"")}・${esc(m.student_id)}</p></div>
+      <span id="score-label-${m.student_id}" class="rounded-full bg-canvas px-3 py-1 text-xs font-black text-muted">${existing.scores[m.student_id]===undefined?'未選擇':existing.scores[m.student_id]+' 分'}</span></div>
+      <div class="mt-4 grid grid-cols-6 gap-2 sm:grid-cols-11">${Array.from({length:11},(_,i)=>`<button type="button" class="score-btn rounded-lg border border-line py-2 text-sm font-bold ${existing.scores[m.student_id]===i?'selected':''}" data-student="${m.student_id}" data-score="${i}">${i}</button>`).join("")}</div>
+    </div>`).join("")}</div>
+    <label class="mt-6 block"><span class="mb-2 block font-black">建議與回饋</span><textarea id="eval-feedback" rows="4" class="w-full resize-none rounded-2xl border border-line px-4 py-3 text-sm leading-6 outline-none focus:border-brand" placeholder="想誇獎小組組員或是有想要反映的都可以寫下來哦（ex.某個組員做的很多 or 某個組員都沒有做事）">${esc(existing.feedback||"")}</textarea></label>
+    <p id="eval-error" class="mt-4 hidden rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600"></p>
+    <button id="eval-submit" class="mt-5 w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white hover:bg-brand-dark">確認送出自評</button>
+  </form>`;
+  let scores = {...existing.scores};
+  document.querySelectorAll(".score-btn").forEach(btn => btn.onclick = () => {
+    scores[btn.dataset.student] = Number(btn.dataset.score);
+    document.querySelectorAll(`[data-student="${btn.dataset.student}"]`).forEach(b => b.classList.toggle("selected", b===btn));
+    $(`score-label-${btn.dataset.student}`).textContent = btn.dataset.score+" 分";
+  });
+  $("eval-form").onsubmit = async e => {
+    e.preventDefault();
+    if(members.some(m => scores[m.student_id]===undefined)){
+      $("eval-error").textContent = "請先完成所有組員的評分，才能送出。"; $("eval-error").classList.remove("hidden"); return;
+    }
+    const feedback = $("eval-feedback").value;
+    const { error } = await sb.rpc("submit_evaluation", { p_term_id: currentTerm.id, p_evaluator_id: currentUser.student_id, p_scores: scores, p_feedback: feedback });
+    if(error){ $("eval-error").textContent = "送出失敗："+error.message; $("eval-error").classList.remove("hidden"); return; }
+    toast("自評已成功送出"); renderEval(); refreshStudentProgress();
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   分組投票
+--------------------------------------------------------------------------- */
+async function renderVoting(){
+  if(!hasGroupAssignment()){
+    $("voting-container").innerHTML = `<div class="rounded-3xl border border-sun/40 bg-sun/10 p-8 text-center shadow-soft"><h4 class="text-xl font-black">尚未完成分組</h4><p class="mt-2 text-sm leading-6 text-muted">完成分組後，老師更新名冊，你就可以進行分組投票。</p></div>`;
+    return;
+  }
+  const groups = groupsGrouped();
+  const { data } = await sb.rpc("get_my_vote", { p_term_id: currentTerm.id, p_student_id: currentUser.student_id });
+  const existing = data && data.length ? data[0] : null;
+  const editing = !!existing;
+  const selectedBefore = existing ? existing.selected_groups : [];
+  $("voting-container").innerHTML = `<div class="rounded-3xl border border-line bg-white p-5 shadow-soft sm:p-7">
+    <div class="grid gap-4 sm:grid-cols-2"><div class="rounded-2xl bg-canvas p-4"><p class="text-xs font-bold text-muted">系級＋姓名</p><p class="mt-1 font-black">${esc(currentUser.dept||"")}・${esc(currentUser.name)}</p></div>
+    <div class="rounded-2xl bg-canvas p-4"><p class="text-xs font-bold text-muted">自己的組別</p><p class="mt-1 font-black">第 ${myGroupNo()} 組</p></div></div>
+    <form id="vote-form" class="mt-7">
+      <div class="flex items-end justify-between"><div><h4 class="text-lg font-black">${editing?"修改分組投票":"最喜歡的組別"}</h4><p class="mt-1 text-sm text-muted">一人兩票，選出你最喜歡的提案。${editing?" 可重新選擇後確認送出。":""}</p></div>
+      <span id="vote-count" class="rounded-full bg-sun/20 px-3 py-1 text-xs font-black">${editing?2:0} / 2</span></div>
+      <div class="mt-5 grid gap-3 sm:grid-cols-2">${groups.map(g=>{
+        const disabled = !VOTING_RULES.allowSelfGroupVote && g.group_no===myGroupNo();
+        return `<label class="flex cursor-pointer items-center justify-between rounded-2xl border border-line p-4 transition ${disabled?'cursor-not-allowed bg-gray-50 opacity-60':'hover:border-brand hover:bg-brand/5'}">
+          <span><span class="block font-black">${esc(g.name)}</span><span class="mt-1 block text-xs text-muted">${disabled?'不能投給自己組別':esc(g.topic)}</span></span>
+          <input type="checkbox" class="vote-option h-5 w-5 accent-brand" value="${g.group_no}" ${disabled?'disabled':''} ${selectedBefore.includes(g.group_no)?'checked':''}></label>`;
+      }).join("")}</div>
+      <label class="mt-6 block"><span class="mb-2 block font-black">投票後回饋</span><textarea id="vote-feedback" rows="4" class="w-full resize-none rounded-2xl border border-line px-4 py-3 text-sm leading-6 outline-none focus:border-brand" placeholder="建議或是想誇獎別組都可以寫在這哦">${esc(existing?.feedback||"")}</textarea></label>
+      <p id="vote-error" class="mt-4 rounded-xl bg-sun/15 px-4 py-3 text-sm font-bold text-ink">請選取恰好 2 個組別（目前已選 ${editing?2:0} 組）</p>
+      <div class="mt-5 flex flex-wrap gap-3"><button id="vote-submit" ${editing?"":"disabled"} class="flex-1 rounded-xl bg-brand px-4 py-3.5 font-black text-white enabled:hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40">${editing?"確認送出修改":"送出投票"}</button>
+      ${editing?'<button type="button" id="vote-cancel-edit" class="rounded-xl border border-line px-4 py-3.5 font-bold text-muted hover:border-brand hover:text-brand">取消</button>':''}</div>
+      ${editing?`<p class="mt-3 text-xs text-muted">最近更新：${esc(new Date(existing.updated_at).toLocaleString("zh-TW"))}</p>`:""}
+    </form></div>`;
+  const refresh = () => {
+    const selected = [...document.querySelectorAll(".vote-option:checked")];
+    $("vote-count").textContent = `${selected.length} / 2`;
+    $("vote-error").textContent = `請選取恰好 2 個組別（目前已選 ${selected.length} 組）`;
+    $("vote-submit").disabled = selected.length !== 2;
+  };
+  document.querySelectorAll(".vote-option").forEach(c => c.onchange = refresh);
+  if(editing) $("vote-cancel-edit").onclick = () => renderVoting();
+  $("vote-form").onsubmit = async e => {
+    e.preventDefault();
+    const ids = [...document.querySelectorAll(".vote-option:checked")].map(c=>Number(c.value));
+    if(ids.length !== 2) return;
+    const feedback = $("vote-feedback").value;
+    const { error } = await sb.rpc("submit_vote", { p_term_id: currentTerm.id, p_student_id: currentUser.student_id, p_groups: ids, p_feedback: feedback });
+    if(error){ $("vote-error").textContent = "送出失敗："+error.message; return; }
+    toast(editing ? "投票修改已送出" : "投票已送出，謝謝你的選擇");
+    renderVoting(); renderReport(); refreshVoteCountStat(); refreshStudentProgress();
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   成果報告（學生可見，投票匿名）
+--------------------------------------------------------------------------- */
+async function renderReport(){
+  if(!currentTerm) return;
+  const [{data: totals}, {data: feedbackRows}] = await Promise.all([
+    sb.rpc("get_vote_totals", { p_term_id: currentTerm.id }),
+    sb.rpc("get_anonymous_vote_feedback", { p_term_id: currentTerm.id })
+  ]);
+  const groups = groupsGrouped();
+  const ranked = (totals||[]).map(t => ({...groups.find(g=>g.group_no===t.group_no), votes:Number(t.votes)}))
+    .filter(Boolean).sort((a,b)=>b.votes-a.votes);
+  const maxVote = Math.max(1, ...ranked.map(g=>g.votes));
+  const feedback = feedbackRows || [];
+  const anonRows = feedback.map((f,i)=>`<tr class="border-b border-line last:border-0"><td class="px-3 py-3 font-bold">匿名回饋 ${i+1}</td><td class="max-w-xl px-3 py-3 text-sm leading-6 text-muted">${esc(f.feedback)}</td></tr>`).join("")
+    || '<tr><td colspan="2" class="px-3 py-3 text-muted">目前尚無投票後回饋</td></tr>';
+  $("report-container").innerHTML = `
+    <section class="rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">總覽</p><h4 class="mt-2 text-2xl font-black">課程成果報告</h4>
+      <div class="mt-5 grid gap-3 sm:grid-cols-3">
+        <div class="rounded-2xl bg-canvas p-4"><p class="text-xs text-muted">已投票人數</p><p class="mt-1 text-2xl font-black text-brand">${Math.round((ranked.reduce((s,g)=>s+g.votes,0))/2)}</p></div>
+        <div class="rounded-2xl bg-canvas p-4"><p class="text-xs text-muted">匿名回饋</p><p class="mt-1 text-2xl font-black text-brand">${feedback.length}</p></div>
+        <div class="rounded-2xl bg-canvas p-4"><p class="text-xs text-muted">報告產出</p><p class="mt-1 text-2xl font-black text-brand">${new Date().toLocaleDateString('zh-TW')}</p></div>
+      </div></section>
+    <section class="rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">投票排名</p>
+      <div class="mt-5 space-y-4">${ranked.map((g,i)=>`<div><div class="mb-2 flex items-center justify-between"><span class="font-black">${i+1}. ${esc(g.name)}</span><span class="text-sm font-bold text-brand">${g.votes} 票</span></div>
+        <div class="h-3 overflow-hidden rounded-full bg-canvas"><div class="h-full rounded-full ${i===0?'bg-sun':'bg-brand'}" style="width:${g.votes/maxVote*100}%"></div></div></div>`).join("")}</div></section>
+    <section class="rounded-3xl border border-line bg-white p-6 shadow-soft lg:col-span-2"><p class="text-sm font-bold text-brand">同學投票後匿名回饋</p><p class="mt-1 text-sm text-muted">為保護同學隱私，這裡不顯示姓名、系級或組別。</p>
+      <div class="mt-4 overflow-x-auto"><table class="w-full text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">匿名識別</th><th class="px-3 py-3">回饋內容</th></tr></thead><tbody>${anonRows}</tbody></table></div></section>`;
+}
+
+/* ---------------------------------------------------------------------------
+   分頁切換
+--------------------------------------------------------------------------- */
+function openView(id){
+  document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active", v.id===id));
+  document.querySelectorAll(".nav-btn[data-view]").forEach(b=>b.classList.toggle("active", b.dataset.view===id));
+  if(id==="self-eval-view") renderEval();
+  if(id==="voting-view") renderVoting();
+  if(id==="report-view") renderReport();
+}
+document.querySelectorAll(".nav-btn[data-view]").forEach(b=>b.onclick=()=>openView(b.dataset.view));
+
+/* ---------------------------------------------------------------------------
+   教師專用：登入（Supabase Auth）
+--------------------------------------------------------------------------- */
+$("teacher-menu-btn").onclick = () => $("teacher-menu").classList.toggle("hidden");
+$("admin-btn").onclick = () => { teacherEntry="admin"; openTeacherGate(); };
+$("course-import-btn").onclick = () => { teacherEntry="import"; openTeacherGate(); };
+$("login-teacher-btn").onclick = () => { teacherEntry="import"; openTeacherGate(); };
+function openTeacherGate(){
+  $("teacher-menu").classList.add("hidden");
+  if(teacherSession){ enterTeacherArea(); return; }
+  $("admin-modal").classList.remove("hidden"); $("admin-email").focus();
+}
+$("admin-cancel").onclick = () => { $("admin-modal").classList.add("hidden"); $("admin-error").classList.add("hidden"); };
+$("admin-form").onsubmit = async e => {
+  e.preventDefault();
+  $("admin-error").classList.add("hidden");
+  const { data, error } = await sb.auth.signInWithPassword({ email: $("admin-email").value.trim(), password: $("admin-password").value });
+  if(error){ $("admin-error").textContent = "登入失敗："+error.message; $("admin-error").classList.remove("hidden"); return; }
+  teacherSession = data.session;
+  $("admin-modal").classList.add("hidden"); $("admin-password").value="";
+  $("teacher-logout-btn").classList.remove("hidden");
+  enterTeacherArea();
+};
+$("teacher-logout-btn").onclick = async () => { await sb.auth.signOut(); teacherSession=null; $("teacher-logout-btn").classList.add("hidden"); toast("教師已登出"); };
+async function enterTeacherArea(){
+  $("login-modal").classList.add("hidden");
+  viewingTermKey = activeTermKey;
+  viewingAcademicYear = activeAcademicYear;
+  const whoami = teacherSession?.user?.email ? `目前登入：${teacherSession.user.email}` : "";
+  if(teacherEntry==="import"){ $("import-whoami").textContent = whoami; $("course-import-panel").classList.remove("hidden"); await renderCourseImport(); }
+  else { $("admin-whoami").textContent = whoami; $("admin-panel").classList.remove("hidden"); await renderTeacherControls(); await renderAdmin(); }
+}
+$("admin-close").onclick = () => $("admin-panel").classList.add("hidden");
+$("course-import-close").onclick = () => $("course-import-panel").classList.add("hidden");
+
+/* ---------------------------------------------------------------------------
+   教師：期別切換 / 刪除資料（滑桿防呆，兩段式）
+--------------------------------------------------------------------------- */
+async function renderTeacherControls(){
+  const { data: yearRows } = await sb.from("terms").select("academic_year").eq("course_id", COURSE_ID);
+  const academicYears = [...new Set([activeAcademicYear, ...(yearRows || []).map(row => row.academic_year).filter(Boolean)])].sort().reverse();
+  const panel = document.createElement("section");
+  panel.id = "teacher-controls-inner";
+  panel.className = "mb-5 rounded-3xl border border-line bg-white p-6 shadow-soft";
+  panel.innerHTML = `<div class="flex flex-wrap items-end justify-between gap-4">
+      <div><p class="text-sm font-bold text-brand">TEACHER ONLY</p><h3 class="mt-1 text-xl font-black">課程與評量階段</h3><p class="mt-1 text-sm text-muted">「開放中」是目前學生登入會用到的期別；下方檢視可切換查看歷史資料。</p></div>
+      <div class="flex flex-wrap gap-2">
+        <label class="text-sm font-bold text-muted">檢視學年度<select id="view-year" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
+          ${academicYears.map(year => `<option value="${esc(year)}" ${viewingAcademicYear===year?"selected":""}>${esc(year)}</option>`).join("")}</select></label>
+        <label class="text-sm font-bold text-muted">檢視期別<select id="view-term" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
+          <option value="midterm" ${viewingTermKey==="midterm"?"selected":""}>期中</option>
+          <option value="final" ${viewingTermKey==="final"?"selected":""}>期末</option></select></label>
+        <label class="text-sm font-bold text-muted">開放學年度<select id="active-year" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
+          ${academicYears.map(year => `<option value="${esc(year)}" ${activeAcademicYear===year?"selected":""}>${esc(year)}</option>`).join("")}</select></label>
+        <label class="text-sm font-bold text-muted">開放期別<select id="active-term" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
+          <option value="midterm" ${activeTermKey==="midterm"?"selected":""}>期中</option>
+          <option value="final" ${activeTermKey==="final"?"selected":""}>期末</option></select></label>
+        <button id="add-academic-year" class="rounded-xl border border-brand px-3 py-2 text-sm font-bold text-brand hover:bg-brand/5">新增學年度</button>
+      </div></div>
+    <div class="mt-5 rounded-2xl bg-red-50 p-4">
+      <div class="flex flex-wrap items-center justify-between gap-3"><div><p class="font-black text-red-700">刪除「檢視期別」的所有歷史資料</p><p class="mt-1 text-xs leading-5 text-red-600">點選刪除資料後，才會展開拉桿防呆機制。</p></div>
+        <button id="delete-archive" class="rounded-xl bg-red-600 px-4 py-2 text-sm font-black text-white hover:bg-red-700">刪除資料</button></div>
+      <div id="delete-guard" class="mt-4 hidden rounded-xl border border-red-200 bg-white p-4">
+        <p class="text-sm font-bold text-red-700">安全確認：請將拉桿拉到固定數字 ${DELETE_CONFIRM_CODE} 才能繼續。</p>
+        <div class="mt-3 flex flex-wrap items-center gap-4"><input id="delete-range" type="range" min="0" max="${DELETE_CONFIRM_CODE}" value="0" class="min-w-48 flex-1 accent-red-600">
+        <output id="delete-range-value" class="w-6 text-center font-black text-red-700">0</output>
+        <button id="confirm-delete-archive" disabled class="rounded-xl bg-red-600 px-4 py-2 text-sm font-black text-white opacity-40">確認永久刪除</button>
+        <button id="cancel-delete-archive" class="rounded-xl border border-line px-4 py-2 text-sm font-bold text-muted hover:border-brand hover:text-brand">取消</button></div>
+      </div></div>`;
+  $("teacher-controls").innerHTML = ""; $("teacher-controls").appendChild(panel);
+
+  $("view-year").onchange = async e => { viewingAcademicYear = e.target.value; await renderAdmin(); };
+  $("view-term").onchange = async e => { viewingTermKey = e.target.value; await renderAdmin(); };
+  $("active-year").onchange = async e => {
+    const { error } = await sb.from("course_settings").upsert({ course_id: COURSE_ID, active_academic_year: e.target.value, active_term_key: activeTermKey, updated_at: new Date().toISOString() });
+    if(error){ toast("切換學年度失敗："+error.message); return; }
+    activeAcademicYear = e.target.value;
+    toast(`已將 ${activeAcademicYear} 設為目前開放學年度`);
+    await refreshCurrentTermData();
+  };
+  $("active-term").onchange = async e => {
+    const { error } = await sb.from("course_settings").upsert({ course_id: COURSE_ID, active_academic_year: activeAcademicYear, active_term_key: e.target.value, updated_at: new Date().toISOString() });
+    if(error){ toast("切換失敗："+error.message); return; }
+    activeTermKey = e.target.value;
+    toast(`已將「${activeTermKey==="midterm"?"期中":"期末"}」設為目前開放期別`);
+    await refreshCurrentTermData();
+  };
+  $("add-academic-year").onclick = async () => {
+    const year = prompt("請輸入新的學年度代碼，例如 1151：", "");
+    if(!year || !/^\d{4}$/.test(year.trim())){ if(year !== null) toast("學年度請輸入四位數字，例如 1151"); return; }
+    const academicYear = year.trim();
+    for(const termKey of ["midterm","final"]){
+      const { error } = await sb.from("terms").upsert({ course_id: COURSE_ID, academic_year: academicYear, course_name: COURSE_NAME, term_key: termKey }, { onConflict:"course_id,academic_year,term_key" });
+      if(error){ toast("新增學年度失敗："+error.message); return; }
+    }
+    toast(`已新增 ${academicYear} 學年度（期中／期末皆為空白名單）`);
+    await renderTeacherControls();
+  };
+  $("delete-archive").onclick = () => { $("delete-guard").classList.remove("hidden"); $("delete-archive").classList.add("hidden"); };
+  $("cancel-delete-archive").onclick = () => {
+    $("delete-range").value="0"; $("delete-range-value").textContent="0";
+    $("confirm-delete-archive").disabled=true; $("confirm-delete-archive").classList.add("opacity-40");
+    $("delete-guard").classList.add("hidden"); $("delete-archive").classList.remove("hidden");
+  };
+  $("delete-range").oninput = e => {
+    $("delete-range-value").textContent = e.target.value;
+    const ok = Number(e.target.value) === DELETE_CONFIRM_CODE;
+    $("confirm-delete-archive").disabled = !ok; $("confirm-delete-archive").classList.toggle("opacity-40", !ok);
+  };
+  $("confirm-delete-archive").onclick = async () => {
+    if(Number($("delete-range").value) !== DELETE_CONFIRM_CODE) return;
+    if(!confirm(`確定刪除「${viewingTermKey==="midterm"?"期中":"期末"}」歷史資料？此操作無法復原。`)) return;
+    const term = await fetchTermByKey(viewingTermKey, viewingAcademicYear);
+    if(term){ await sb.from("terms").delete().eq("id", term.id); }
+    toast("歷史課程資料已刪除");
+    await renderTeacherControls(); await renderAdmin();
+    if(viewingTermKey===activeTermKey) await refreshCurrentTermData();
+  };
+}
+
+/* ---------------------------------------------------------------------------
+   教師：教材編輯區（即時戰報 / 自評名冊 / 投票紀錄）
+--------------------------------------------------------------------------- */
+let lastAdminData = null;
+async function renderAdmin(){
+  const term = await fetchTermByKey(viewingTermKey, viewingAcademicYear);
+  if(!term){ $("admin-content").innerHTML = `<p class="rounded-3xl border border-line bg-white p-6 text-sm text-muted shadow-soft">此期別尚未匯入任何資料。</p>`; lastAdminData=null; return; }
+  const [{data: students}, {data: groups}, {data: evaluations}, {data: votes}] = await Promise.all([
+    sb.from("students").select("*").eq("term_id", term.id).order("group_no"),
+    sb.from("groups").select("*").eq("term_id", term.id).order("group_no"),
+    sb.from("evaluations").select("*").eq("term_id", term.id),
+    sb.from("votes").select("*").eq("term_id", term.id)
+  ]);
+  lastAdminData = { term, students: students||[], groups: groups||[], evaluations: evaluations||[], votes: votes||[] };
+  const nameOf = sid => (students||[]).find(s=>s.student_id===sid)?.name || sid;
+  const groupNameOf = gn => (groups||[]).find(g=>g.group_no===gn)?.name || `第${gn}組`;
+
+  const voteTotals = {};
+  for(const g of (groups||[])) voteTotals[g.group_no]=0;
+  for(const v of (votes||[])) for(const gn of v.selected_groups) voteTotals[gn]=(voteTotals[gn]||0)+1;
+  const ranked = [...(groups||[])].sort((a,b)=>(voteTotals[b.group_no]||0)-(voteTotals[a.group_no]||0));
+  const maxVote = Math.max(1, ...ranked.map(g=>voteTotals[g.group_no]||0));
+
+  const evalRows = (students||[]).map(s => {
+    const e = (evaluations||[]).find(ev=>ev.evaluator_id===s.student_id);
+    const vals = e ? Object.values(e.scores).map(Number) : [];
+    const details = e ? Object.entries(e.scores).map(([sid,score])=>`${esc(nameOf(sid))}：${score} 分`).join("、") : "—";
+    const avg = vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : "—";
+    return `<tr class="border-b border-line last:border-0"><td class="px-3 py-3 font-bold">${esc(s.name)}</td><td class="px-3 py-3 text-muted">${esc(groupNameOf(s.group_no))}</td>
+      <td class="px-3 py-3"><span class="rounded-full ${e?'bg-green-100 text-green-700':'bg-canvas text-muted'} px-2.5 py-1 text-xs font-bold">${e?'已完成':'未填寫'}</span></td>
+      <td class="px-3 py-3 font-black text-brand">${avg}</td><td class="max-w-sm px-3 py-3 text-sm leading-6 text-muted">${details}</td>
+      <td class="max-w-xs px-3 py-3 text-sm text-muted">${e?esc(e.feedback||"未留下文字回饋"):'—'}</td></tr>`;
+  }).join("");
+
+  const voteRows = (votes||[]).map(v => `<tr class="border-b border-line last:border-0"><td class="px-3 py-3 font-bold">${esc(nameOf(v.student_id))}</td>
+    <td class="px-3 py-3 text-muted">${v.selected_groups.map(gn=>esc(groupNameOf(gn))).join("、")}</td>
+    <td class="px-3 py-3 text-xs text-muted">${esc(new Date(v.updated_at).toLocaleString("zh-TW"))}</td></tr>`).join("")
+    || '<tr><td colspan="3" class="px-3 py-3 text-muted">目前尚無投票紀錄</td></tr>';
+
+  $("admin-content").innerHTML = `
+    <div class="grid gap-5 lg:grid-cols-[.9fr_1.1fr]">
+      <section class="rounded-3xl border border-line bg-white p-6 shadow-soft"><div class="flex items-end justify-between"><div><p class="text-sm font-bold text-brand">LIVE RANKING</p><h3 class="mt-1 text-xl font-black">票選即時戰報</h3></div><span class="text-xs font-bold text-muted">${(votes||[]).length} 人已投票</span></div>
+        <div class="mt-6 space-y-4">${ranked.map((g,i)=>`<div><div class="mb-2 flex justify-between text-sm"><span class="font-bold">${i+1}. ${esc(g.name)}</span><span class="font-black text-brand">${voteTotals[g.group_no]||0} 票</span></div>
+          <div class="h-3 overflow-hidden rounded-full bg-canvas"><div class="h-full rounded-full ${i===0?'bg-sun':'bg-brand'}" style="width:${(voteTotals[g.group_no]||0)/maxVote*100}%"></div></div></div>`).join("")}</div></section>
+      <section class="rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">ACTIVITY NOTES</p><h3 class="mt-1 text-xl font-black">課程活動摘要</h3>
+        <div class="mt-5 grid grid-cols-2 gap-3"><div class="rounded-2xl bg-canvas p-4"><p class="text-xs text-muted">學生人數</p><p class="mt-1 text-2xl font-black">${(students||[]).length}</p></div>
+        <div class="rounded-2xl bg-canvas p-4"><p class="text-xs text-muted">完成率</p><p class="mt-1 text-2xl font-black">${(students||[]).length?Math.round((evaluations||[]).length/(students||[]).length*100):0}%</p></div></div></section>
+    </div>
+    <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">VOTE RECORDS</p><h3 class="mt-1 text-xl font-black">分組投票紀錄與時間</h3>
+      <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[560px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">學生</th><th class="px-3 py-3">投票組別</th><th class="px-3 py-3">最後更新時間</th></tr></thead><tbody>${voteRows}</tbody></table></div></section>
+    <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">REFLECTION TRACKER</p><h3 class="mt-1 text-xl font-black">自評填寫名冊</h3>
+      <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[760px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">姓名</th><th class="px-3 py-3">組別</th><th class="px-3 py-3">填寫進度</th><th class="px-3 py-3">互評平均</th><th class="px-3 py-3">逐位評分明細</th><th class="px-3 py-3">質性回饋</th></tr></thead><tbody>${evalRows}</tbody></table></div></section>`;
+  renderAdminGrouping(term, students||[], groups||[]);
+}
+
+function renderAdminGrouping(term, students, groups){
+  const existing = students.filter(s => s.group_no !== null).map(s => `${s.group_no}: ${s.name}`).join("\n");
+  $("admin-content").insertAdjacentHTML("beforeend", `
+    <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft">
+      <p class="text-sm font-bold text-brand">GROUP MANAGEMENT</p>
+      <h3 class="mt-1 text-xl font-black">管理者分組</h3>
+      <p class="mt-2 text-sm leading-6 text-muted">每行格式：<b>組別：姓名 姓名</b>。未列出的學生會保持「待分組」。可先貼上目前已知的分組，之後再補分組。</p>
+      <textarea id="admin-group-plan" rows="8" class="mt-4 w-full rounded-2xl border border-line bg-canvas p-4 text-sm leading-7 outline-none focus:border-brand" placeholder="第一組：張三 李四&#10;第二組：王五 趙六&#10;待分組：未出席同學">${esc(existing)}</textarea>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <label class="text-sm font-bold text-muted"><input id="admin-group-sync-terms" type="checkbox" checked class="mr-2 accent-brand">同步期中與期末</label>
+        <button id="admin-group-save" class="rounded-xl bg-brand px-4 py-3 text-sm font-black text-white hover:bg-brand-dark">套用分組</button>
+        <span class="text-xs text-muted">目前 ${students.filter(s=>s.group_no===null).length} 位待分組</span>
+      </div>
+      <p id="admin-group-error" class="mt-3 hidden rounded-xl bg-red-50 p-3 text-sm text-red-700"></p>
+    </section>`);
+  $("admin-group-save").onclick = async () => {
+    const errorBox = $("admin-group-error");
+    errorBox.classList.add("hidden");
+    try {
+      const assignments = parseAdminGroupPlan($("admin-group-plan").value, students);
+      const termKeys = $("admin-group-sync-terms").checked ? ["midterm","final"] : [term.term_key];
+      for(const termKey of termKeys){
+        const targetTerm = termKey === term.term_key ? term : await fetchTermByKey(termKey, viewingAcademicYear);
+        if(!targetTerm) continue;
+        await saveAdminGroupAssignments(targetTerm, assignments);
+      }
+      toast(`已套用分組：${assignments.filter(a=>a.groupNo !== null).length} 位學生，${assignments.filter(a=>a.groupNo === null).length} 位待分組`);
+      await renderAdmin();
+    } catch(err){
+      console.error(err);
+      errorBox.textContent = "分組套用失敗："+err.message;
+      errorBox.classList.remove("hidden");
+    }
+  };
+}
+
+function parseAdminGroupPlan(text, students){
+  const byName = new Map(students.map(s => [s.name.trim(), s]));
+  const assignments = new Map(students.map(s => [s.id, null]));
+  const unknown = [];
+  const duplicate = [];
+  text.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).forEach(line => {
+    const match = line.match(/^(?:第)?([0-9０-９一二三四五六七八九十]+)\s*(?:組)?\s*[:：]\s*(.*)$/);
+    const waiting = /^(?:待分組|未分組|unassigned)\s*[:：]\s*(.*)$/i.exec(line);
+    const groupNo = match ? parseGroupNumber(match[1]) : null;
+    const namesText = match ? match[2] : waiting ? waiting[1] : "";
+    if(!match && !waiting) throw new Error(`格式錯誤：「${line}」；請使用「第一組：姓名 姓名」或「待分組：姓名」`);
+    const names = namesText.split(/[、,，\s]+/).map(name=>name.trim()).filter(Boolean);
+    names.forEach(name => {
+      const student = byName.get(name);
+      if(!student){ unknown.push(name); return; }
+      if(assignments.get(student.id) !== null) duplicate.push(name);
+      assignments.set(student.id, groupNo);
+    });
+  });
+  if(unknown.length) throw new Error(`找不到學生：${[...new Set(unknown)].join("、")}`);
+  if(duplicate.length) throw new Error(`學生重複分組：${[...new Set(duplicate)].join("、")}`);
+  return students.map(s => ({ studentId:s.student_id, groupNo:assignments.get(s.id) }));
+}
+
+function parseGroupNumber(value){
+  const normalized = String(value).replace(/[０-９]/g, digit => String.fromCharCode(digit.charCodeAt(0)-0xfee0));
+  if(/^\d+$/.test(normalized)) return Number(normalized);
+  const digits = {一:1,二:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9};
+  if(normalized === "十") return 10;
+  if(normalized.startsWith("十")) return 10 + (digits[normalized[1]] || 0);
+  if(normalized.endsWith("十")) return digits[normalized[0]] * 10;
+  if(normalized.length === 2 && normalized[1] === "十") return digits[normalized[0]] * 10;
+  return digits[normalized] || NaN;
+}
+
+async function saveAdminGroupAssignments(term, assignments){
+  const groupNos = [...new Set(assignments.map(a=>a.groupNo).filter(Number.isInteger))].sort((a,b)=>a-b);
+  const { data: existingGroups, error: groupsError } = await sb.from("groups").select("*").eq("term_id", term.id);
+  if(groupsError) throw groupsError;
+  const groupRows = groupNos.map(groupNo => {
+    const found = (existingGroups||[]).find(g=>g.group_no===groupNo);
+    return { term_id:term.id, group_no:groupNo, name:found?.name || `第${groupNo}組`, topic:found?.topic || "尚未設定小組主題" };
+  });
+  if(groupRows.length){
+    const { error } = await sb.from("groups").upsert(groupRows, { onConflict:"term_id,group_no" });
+    if(error) throw error;
+  }
+  for(const assignment of assignments){
+    const { error } = await sb.from("students").update({ group_no:assignment.groupNo }).eq("term_id", term.id).eq("student_id", assignment.studentId);
+    if(error) throw error;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   教師：課程資料匯入（獨立頁）
+--------------------------------------------------------------------------- */
+async function renderCourseImport(){
+  const savedWebhook = localStorage.getItem("cci-gas-webhook-url") || "";
+  const { data: yearRows } = await sb.from("terms").select("academic_year").eq("course_id", COURSE_ID);
+  const importYears = [...new Set([activeAcademicYear, ...(yearRows || []).map(row => row.academic_year).filter(Boolean)])].sort().reverse();
+  $("course-import-content").innerHTML = `
+    <section class="grid gap-5 lg:grid-cols-2">
+      <div class="rounded-3xl border border-line bg-white p-7 shadow-soft">
+        <p class="text-sm font-bold text-brand">ROSTER IMPORT</p><h3 class="mt-1 text-2xl font-black">匯入學生名單 CSV / Excel</h3>
+        <p class="mt-3 text-sm leading-6 text-muted">欄位請包含：學號、姓名、系級、組別（或英文 studentId/name/dept/groupId）。組別可先留空，完成分組後再重新匯入更新。標示為教師／助教／admin 的列會自動寫入管理名單並排除於學生名冊。</p>
+        <label class="mt-5 block text-sm font-bold text-muted">匯入學年度<select id="import-year" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
+          ${importYears.map(year => `<option value="${esc(year)}" ${year===activeAcademicYear?"selected":""}>${esc(year)}</option>`).join("")}</select></label>
+        <button id="course-roster-import-btn" class="mt-4 rounded-xl bg-brand px-4 py-3 text-sm font-black text-white hover:bg-brand-dark">選擇名冊檔案</button>
+        <p class="mt-3 text-xs text-muted">支援 .csv、.xlsx、.xls；檔案在瀏覽器本機解析後寫入資料庫。</p>
+      </div>
+      <div class="rounded-3xl border border-line bg-white p-7 shadow-soft">
+        <p class="text-sm font-bold text-brand">GOOGLE SHEETS SYNC（選用）</p><h3 class="mt-1 text-2xl font-black">Google Apps Script Webhook</h3>
+        <p class="mt-3 text-sm leading-6 text-muted">貼上 GAS Web App URL 後，自評與投票送出時會額外複製一份到你的試算表，方便備份或另外統計。<b>資料庫（Supabase）才是系統實際運作依據</b>，這裡只是額外備份。</p>
+        <div class="mt-5 flex gap-2"><input id="course-webhook-url" value="${esc(savedWebhook)}" placeholder="https://script.google.com/macros/s/.../exec" class="min-w-0 flex-1 rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-brand">
+        <button id="course-webhook-save" class="rounded-xl border border-line px-4 py-3 text-sm font-bold text-brand hover:border-brand">儲存</button></div>
+      </div>
+    </section>`;
+  $("course-roster-import-btn").onclick = () => { $("roster-file").dataset.targetYear = $("import-year").value; $("roster-file").click(); };
+  $("course-webhook-save").onclick = () => {
+    const url = $("course-webhook-url").value.trim();
+    if(url && !/^https:\/\//i.test(url)){ toast("Webhook URL 必須以 https:// 開頭"); return; }
+    if(url) localStorage.setItem("cci-gas-webhook-url", url); else localStorage.removeItem("cci-gas-webhook-url");
+    toast(url ? "已儲存（僅存在這台裝置的瀏覽器）" : "已清除設定");
+  };
+}
+function normaliseRosterRow(row, index){
+  const get = (...keys) => { const k = keys.find(key => row[key]!==undefined && row[key]!==""); return k ? String(row[k]).trim() : ""; };
+  const role = get("身分","身份","角色","職稱","role","Role","user_type","type").toLowerCase();
+  const isStaff = /教師|老師|助教|教學助理|管理者|teacher|instructor|ta\b|teaching assistant|admin(?:istrator)?|staff/.test(role);
+  const studentId = get("studentId","Student ID","學號","id","名字");
+  const name = get("name","Name","姓名","姓氏");
+  const email = get("email","Email","電子郵件信箱","email_address").toLowerCase();
+  if(isStaff) return { kind:"staff", email, name, role:"admin" };
+  const dept = get("dept","department","系級","班級") || "";
+  const groupValue = get("groupId","group","組別","group_id","groupNo");
+  const groupNo = groupValue === "" ? null : Number(groupValue);
+  if(!studentId || !name || (groupNo !== null && (!Number.isInteger(groupNo) || groupNo<1))) throw new Error(`第 ${index+2} 列缺少學號、姓名或有效組別`);
+  return { kind:"student", studentId, name, dept, groupNo };
+}
+$("roster-file").onchange = async e => {
+  const file = e.target.files[0]; const academicYear = e.target.dataset.targetYear || activeAcademicYear; e.target.value="";
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    try {
+      const wb = XLSX.read(ev.target.result, { type:"array" });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval:"" });
+      if(!rows.length) throw new Error("檔案沒有可匯入的資料列");
+      const normalizedRows = rows.map(normaliseRosterRow);
+      const staffRows = normalizedRows.filter(row => row?.kind === "staff");
+      const imported = normalizedRows.filter(row => row?.kind === "student");
+      if(!imported.length) throw new Error("檔案中沒有可匯入的學生資料");
+      if(staffRows.some(row => !row.email)) throw new Error("教師／助教資料缺少電子郵件信箱");
+      await syncStaffMembers(staffRows);
+      await importRosterToAcademicYear(academicYear, imported);
+      toast(`已匯入 ${imported.length} 位學生${staffRows.length ? `，已同步 ${staffRows.length} 位教師／助教管理員` : ""}到 ${academicYear} 學年度的期中／期末`);
+      if(academicYear===activeAcademicYear) await refreshCurrentTermData();
+      if($("admin-panel").classList.contains("hidden")===false) await renderAdmin();
+    } catch(err){ console.error(err); toast("名冊匯入失敗："+err.message); }
+  };
+  reader.onerror = () => toast("名冊檔案讀取失敗，請重新選擇檔案");
+  reader.readAsArrayBuffer(file);
+};
+async function importRosterToAcademicYear(academicYear, imported){
+  for(const termKey of ["midterm","final"]){
+    let term = await fetchTermByKey(termKey, academicYear);
+    if(!term){
+      const { data, error } = await sb.from("terms").insert({ course_id: COURSE_ID, academic_year: academicYear, course_name: COURSE_NAME, term_key: termKey }).select().single();
+      if(error) throw error;
+      term = data;
+    }
+    const groupNos = [...new Set(imported.map(s=>s.groupNo).filter(groupNo => groupNo !== null))].sort((a,b)=>a-b);
+    const { data: existingGroups, error: groupsError } = await sb.from("groups").select("*").eq("term_id", term.id);
+    if(groupsError) throw groupsError;
+    const groupRows = groupNos.map(gn => {
+      const found = existingGroups?.find(g=>g.group_no===gn);
+      return { term_id: term.id, group_no: gn, name: found?.name || `第${gn}組`, topic: found?.topic || "尚未設定小組主題" };
+    });
+    if(groupRows.length){
+      const { error } = await sb.from("groups").upsert(groupRows, { onConflict: "term_id,group_no" });
+      if(error) throw error;
+    }
+    const { error: deleteError } = await sb.from("students").delete().eq("term_id", term.id);
+    if(deleteError) throw deleteError;
+    const studentRows = imported.map(s => ({ term_id: term.id, student_id: s.studentId, name: s.name, dept: s.dept, group_no: s.groupNo }));
+    const { error: insertError } = await sb.from("students").insert(studentRows);
+    if(insertError) throw insertError;
+  }
+}
+
+/*
+ * 保留這個單一期別 helper 供未來維護使用；目前匯入流程會使用上面的
+ * importRosterToAcademicYear，確保同一份名單同步到期中與期末。
+ */
+async function importRosterToTerm(termKey, imported){
+  let term = await fetchTermByKey(termKey, viewingAcademicYear);
+  if(!term){
+    const { data, error } = await sb.from("terms").insert({ course_id: COURSE_ID, academic_year: viewingAcademicYear, course_name: COURSE_NAME, term_key: termKey }).select().single();
+    if(error) throw error;
+    term = data;
+  }
+  const groupNos = [...new Set(imported.map(s=>s.groupNo).filter(groupNo => groupNo !== null))].sort((a,b)=>a-b);
+  const { data: existingGroups } = await sb.from("groups").select("*").eq("term_id", term.id);
+  const groupRows = groupNos.map(gn => {
+    const found = existingGroups?.find(g=>g.group_no===gn);
+    return { term_id: term.id, group_no: gn, name: found?.name || `第${gn}組`, topic: found?.topic || "尚未設定小組主題" };
+  });
+  await sb.from("groups").upsert(groupRows, { onConflict: "term_id,group_no" });
+  await sb.from("students").delete().eq("term_id", term.id);
+  const studentRows = imported.map(s => ({ term_id: term.id, student_id: s.studentId, name: s.name, dept: s.dept, group_no: s.groupNo }));
+  const { error: insErr } = await sb.from("students").insert(studentRows);
+  if(insErr) throw insErr;
+}
+
+async function syncStaffMembers(staffRows){
+  const rows = staffRows.map(row => ({
+    course_id: COURSE_ID,
+    email: row.email,
+    name: row.name,
+    role: "admin",
+    updated_at: new Date().toISOString()
+  }));
+  const { error } = await sb.from("staff_members").upsert(rows, { onConflict:"course_id,email" });
+  if(error) throw new Error(`管理名單同步失敗：${error.message}`);
+}
+
+/* ---------------------------------------------------------------------------
+   PDF 匯出（教師端，抓 lastAdminData）
+--------------------------------------------------------------------------- */
+async function exportPdf(){
+  if(!lastAdminData){ toast("請先在教材編輯區載入資料"); return; }
+  const { students, groups, evaluations, votes } = lastAdminData;
+  const nameOf = sid => students.find(s=>s.student_id===sid)?.name || sid;
+  const groupNameOf = gn => groups.find(g=>g.group_no===gn)?.name || `第${gn}組`;
+  const voteTotals = {}; for(const g of groups) voteTotals[g.group_no]=0;
+  for(const v of votes) for(const gn of v.selected_groups) voteTotals[gn]=(voteTotals[gn]||0)+1;
+  const ranked = [...groups].sort((a,b)=>(voteTotals[b.group_no]||0)-(voteTotals[a.group_no]||0));
+  const maxVote = Math.max(1, ...ranked.map(g=>voteTotals[g.group_no]||0));
+  const feedbackRows = votes.filter(v=>v.feedback && v.feedback.trim()).map((v,i)=>`<tr><td>匿名回饋 ${i+1}</td><td>${esc(v.feedback)}</td></tr>`).join("") || '<tr><td colspan="2">目前尚無投票後回饋</td></tr>';
+  const evalRows = students.map(s => {
+    const e = evaluations.find(ev=>ev.evaluator_id===s.student_id);
+    const vals = e ? Object.values(e.scores).map(Number) : [];
+    const avg = vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : "—";
+    return `<tr><td>${esc(s.name)}</td><td>${esc(groupNameOf(s.group_no))}</td><td>${e?'已完成':'未填寫'}</td><td>${avg}</td><td>${e?esc(e.feedback||'未留下質性回饋'):'—'}</td></tr>`;
+  }).join("");
+  const report = $("print-report");
+  report.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;padding:48px;background:#fff;color:#2E3131;font-family:Arial,'Noto Sans TC',sans-serif;z-index:-1;";
+  report.innerHTML = `<div style="border-bottom:4px solid #416D85;padding-bottom:18px"><div style="font-size:14px;color:#416D85;font-weight:700;letter-spacing:2px">CLASSROOM HUB / REPORT</div>
+    <h1 style="font-size:30px;margin:12px 0 6px">${esc(COURSE_NAME)}｜成果報告（${viewingTermKey==="midterm"?"期中":"期末"}）</h1><p style="color:#687070;margin:0">產出時間：${new Date().toLocaleString("zh-TW")}</p></div>
+    <h2 style="font-size:20px;margin:30px 0 12px;color:#416D85">一、分組投票統計與排名</h2>
+    <div>${ranked.map((g,i)=>`<div style="margin:12px 0"><div style="display:flex;justify-content:space-between;font-weight:700"><span>${i+1}. ${esc(g.name)}｜${esc(g.topic)}</span><span>${voteTotals[g.group_no]||0} 票</span></div>
+      <div style="height:12px;background:#F6F0E3;border-radius:8px;margin-top:6px"><div style="height:12px;width:${(voteTotals[g.group_no]||0)/maxVote*100}%;background:${i===0?'#F8B831':'#416D85'};border-radius:8px"></div></div></div>`).join("")}</div>
+    <h2 style="font-size:20px;margin:30px 0 12px;color:#416D85">二、投票後匿名回饋</h2><p style="font-size:12px;color:#687070">本區不顯示姓名、系級或組別，以保護同學隱私。</p>
+    <table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#EAF1F4"><th style="padding:8px;text-align:left">匿名識別</th><th style="padding:8px;text-align:left">回饋內容</th></tr></thead><tbody>${feedbackRows}</tbody></table>
+    <h2 style="font-size:20px;margin:30px 0 12px;color:#416D85">三、組內自評與質性回饋摘要</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#EAF1F4"><th style="padding:7px;text-align:left">姓名</th><th style="padding:7px;text-align:left">組別</th><th style="padding:7px;text-align:left">狀態</th><th style="padding:7px;text-align:left">平均</th><th style="padding:7px;text-align:left">回饋</th></tr></thead><tbody>${evalRows}</tbody></table>`;
+  try {
+    const canvas = await html2canvas(report, { scale:2, backgroundColor:"#ffffff", useCORS:true });
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
+    const pageWidth=210, pageHeight=297, margin=10, imageWidth=pageWidth-margin*2, imageHeight=canvas.height*imageWidth/canvas.width;
+    let remaining=imageHeight, offset=0;
+    pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imageWidth,imageHeight);
+    remaining -= pageHeight-margin*2;
+    while(remaining>0){ offset += pageHeight-margin*2; pdf.addPage(); pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin-offset,imageWidth,imageHeight); remaining -= pageHeight-margin*2; }
+    pdf.save(`${COURSE_NAME}_成果報告_${new Date().toISOString().slice(0,10)}.pdf`);
+    toast("成果報告 PDF 已下載");
+  } catch(err){ console.error(err); toast("PDF 匯出失敗，請確認網路可載入 PDF 套件"); }
+  finally { report.innerHTML=""; report.removeAttribute("style"); }
+}
+$("print-btn").onclick = exportPdf;
+
+/* ---------------------------------------------------------------------------
+   啟動
+--------------------------------------------------------------------------- */
+(async function init(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(session){ teacherSession = session; $("teacher-logout-btn").classList.remove("hidden"); }
+  await tryRestoreSession();
+  if(!currentUser && !teacherSession){
+    teacherEntry = "import";
+    openTeacherGate();
+  }
+})();
+</script>
+</body>
+</html>
