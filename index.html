@@ -56,7 +56,6 @@
     </div>
     <nav class="relative z-30 mx-auto flex max-w-7xl flex-wrap gap-1 overflow-visible px-4 pb-3 sm:px-6">
       <button class="nav-btn active whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold" data-view="group-list-view">查看分組名單</button>
-      <button id="student-preview-nav" class="nav-btn hidden whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" type="button">學生預覽</button>
       <button class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" data-view="self-eval-view">小組自評</button>
       <button class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" data-view="voting-view">分組投票</button>
       <button class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" data-view="report-view">成果報告</button>
@@ -150,7 +149,7 @@
 <!-- ===================== 教材編輯區 ===================== -->
 <div id="admin-panel" class="fixed inset-0 z-40 hidden overflow-y-auto bg-canvas">
   <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-    <div class="mb-8 flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-bold text-brand">CONTROL ROOM</p><h2 class="text-3xl font-black">教材編輯區</h2><p id="admin-whoami" class="mt-1 text-xs text-muted"></p></div>
+    <div class="mb-8 flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-bold text-brand">CONTROL ROOM</p><h2 class="text-3xl font-black">管理者活動中控台</h2><p id="admin-whoami" class="mt-1 text-xs text-muted"></p></div>
       <div class="flex gap-3"><button id="print-btn" class="rounded-xl bg-sun px-4 py-3 text-sm font-black text-ink hover:brightness-95">下載成果報告 PDF</button><button id="admin-close" class="rounded-xl border border-line bg-white px-4 py-3 text-sm font-bold text-muted">關閉</button></div>
     </div>
     <div id="teacher-controls"></div>
@@ -203,9 +202,6 @@ let groupRoster = [];              // [{group_no,name,topic,member_name}]
 const groupRosterCache = new Map();
 let teacherEntry = "admin";
 let teacherSession = null;
-let studentPreview = false;
-let studentPreviewEditing = false;
-let adminPreviewMode = false;
 let studentIdleTimer = null;
 
 function groupsGrouped(){
@@ -389,7 +385,6 @@ $("logout-btn").onclick = () => { clearStudentSession(); location.reload(); };
 function renderGroups(){
   const groups = groupsGrouped();
   document.querySelectorAll(".admin-group-view").forEach(element => element.remove());
-  document.querySelectorAll(".student-preview-banner").forEach(element => element.remove());
   $("group-grid").innerHTML = groups.map(g => {
     const mine = currentUser && g.group_no === myGroupNo();
     return `<article class="relative overflow-hidden rounded-3xl border ${mine?'border-sun ring-2 ring-sun/30':'border-line'} bg-white p-6 shadow-soft transition hover:-translate-y-1 hover:shadow-lift">
@@ -433,25 +428,8 @@ function renderGroups(){
     await loadGroupRoster(currentTerm.id);
     renderGroups(); renderReport(); refreshStudentProgress();
   });
-  if(teacherSession && currentTerm && !studentPreview && !adminPreviewMode){
+  if(teacherSession && currentTerm){
     renderAdminRosterInGroupView();
-  }
-  if(studentPreview || adminPreviewMode){
-    $("group-list-view").insertAdjacentHTML("afterbegin", `<div class="student-preview-banner mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sun/50 bg-sun/10 p-4">
-      <div><p class="text-sm font-black text-brand">學生視角預覽</p><p class="mt-1 text-xs text-muted">${adminPreviewMode ? "管理者唯讀預覽，不會修改任何資料" : `目前模擬：${esc(currentUser?.name || "")}（${esc(currentUser?.student_id || "")}）`}</p></div>
-      <div class="flex flex-wrap gap-2">
-        ${studentPreview ? `<button id="toggle-student-preview-edit" class="rounded-xl ${studentPreviewEditing ? "bg-brand text-white" : "border border-line bg-white text-brand"} px-3 py-2 text-xs font-bold hover:border-brand">${studentPreviewEditing ? "編修功能已啟用" : "啟用編修功能"}</button>` : ""}
-        <button id="exit-student-preview" class="rounded-xl border border-line bg-white px-3 py-2 text-xs font-bold text-brand hover:border-brand">結束預覽</button>
-      </div>
-    </div>`);
-    if(studentPreview) $("toggle-student-preview-edit").onclick = () => {
-      studentPreviewEditing = !studentPreviewEditing;
-      renderGroups();
-      renderEval();
-      renderVoting();
-      toast(studentPreviewEditing ? "已啟用編修功能，送出內容會寫入正式結果" : "已關閉編修功能，目前為唯讀預覽");
-    };
-    $("exit-student-preview").onclick = exitStudentPreview;
   }
 }
 
@@ -469,10 +447,6 @@ async function renderAdminRosterInGroupView(){
    小組自評
 --------------------------------------------------------------------------- */
 async function renderEval(){
-  if(adminPreviewMode){
-    renderAdminPreviewEval();
-    return;
-  }
   if(!hasGroupAssignment()){
     $("eval-container").innerHTML = `<div class="rounded-3xl border border-sun/40 bg-sun/10 p-8 text-center shadow-soft"><h4 class="text-xl font-black">尚未完成分組</h4><p class="mt-2 text-sm leading-6 text-muted">完成分組後，老師更新名冊，你就可以進行小組自評。</p></div>`;
     return;
@@ -504,7 +478,7 @@ function renderEvalFormWithIds(members, existing){
     </div>`).join("")}</div>
     <label class="mt-6 block"><span class="mb-2 block font-black">建議與回饋</span><textarea id="eval-feedback" rows="4" class="w-full resize-none rounded-2xl border border-line px-4 py-3 text-sm leading-6 outline-none focus:border-brand" placeholder="想誇獎小組組員或是有想要反映的都可以寫下來哦（ex.某個組員做的很多 or 某個組員都沒有做事）">${esc(existing.feedback||"")}</textarea></label>
     <p id="eval-error" class="mt-4 hidden rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600"></p>
-    <button id="eval-submit" ${studentPreview && !studentPreviewEditing ? "disabled" : ""} class="mt-5 w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40">${studentPreview && !studentPreviewEditing ? "預覽模式（啟用編修後才能送出）" : "確認送出自評"}</button>
+    <button id="eval-submit" class="mt-5 w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white hover:bg-brand-dark">確認送出自評</button>
   </form>`;
   let scores = {...existing.scores};
   document.querySelectorAll(".score-btn").forEach(btn => btn.onclick = () => {
@@ -514,7 +488,6 @@ function renderEvalFormWithIds(members, existing){
   });
   $("eval-form").onsubmit = async e => {
     e.preventDefault();
-    if(studentPreview && !studentPreviewEditing){ toast("目前是唯讀預覽，請先啟用編修功能"); return; }
     if(members.some(m => scores[m.student_id]===undefined)){
       $("eval-error").textContent = "請先完成所有組員的評分，才能送出。"; $("eval-error").classList.remove("hidden"); return;
     }
@@ -525,33 +498,10 @@ function renderEvalFormWithIds(members, existing){
   };
 }
 
-function renderAdminPreviewEval(){
-  const groups = groupsGrouped();
-  const members = groups.flatMap(group => group.members.map(name => ({ name, groupName: group.name })));
-  $("eval-container").innerHTML = `<div class="mb-5 rounded-2xl border border-sun/50 bg-sun/10 p-4 text-sm text-muted">
-    <p class="font-black text-brand">管理者學生預覽</p>
-    <p class="mt-1">以下為小組自評的學生操作畫面示意。控制項已停用，不會讀取或修改任何學生的正式自評資料。</p>
-  </div>
-  <div class="rounded-3xl border border-line bg-white p-5 shadow-soft sm:p-7">
-    <div class="mb-6 rounded-2xl bg-canvas p-4"><p class="text-sm font-black text-brand">小組自評</p><p class="mt-1 text-sm text-muted">學生會在這裡為同組成員評分 0 到 10 分。</p></div>
-    <div class="space-y-4">${members.map(member => `<div class="rounded-2xl border border-line p-4">
-      <div class="flex items-center justify-between gap-3"><div><p class="font-black">${esc(member.name)}</p><p class="text-xs text-muted">${esc(member.groupName)}</p></div>
-      <span class="rounded-full bg-canvas px-3 py-1 text-xs font-black text-muted">未選擇</span></div>
-      <div class="mt-4 grid grid-cols-6 gap-2 sm:grid-cols-11">${Array.from({length:11},(_,i)=>`<button type="button" disabled class="rounded-lg border border-line py-2 text-sm font-bold opacity-50">${i}</button>`).join("")}</div>
-    </div>`).join("") || '<p class="text-sm text-muted">目前尚無組員資料。</p>'}</div>
-    <label class="mt-6 block"><span class="mb-2 block font-black">建議與回饋</span><textarea rows="4" disabled class="w-full resize-none rounded-2xl border border-line bg-gray-50 px-4 py-3 text-sm leading-6 opacity-70" placeholder="學生可在這裡填寫小組回饋"></textarea></label>
-    <button type="button" disabled class="mt-5 w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white opacity-40">預覽模式（不可送出）</button>
-  </div>`;
-}
-
 /* ---------------------------------------------------------------------------
    分組投票
 --------------------------------------------------------------------------- */
 async function renderVoting(){
-  if(adminPreviewMode){
-    renderAdminPreviewVoting();
-    return;
-  }
   if(!hasGroupAssignment()){
     $("voting-container").innerHTML = `<div class="rounded-3xl border border-sun/40 bg-sun/10 p-8 text-center shadow-soft"><h4 class="text-xl font-black">尚未完成分組</h4><p class="mt-2 text-sm leading-6 text-muted">完成分組後，老師更新名冊，你就可以進行分組投票。</p></div>`;
     return;
@@ -589,7 +539,6 @@ async function renderVoting(){
   if(editing) $("vote-cancel-edit").onclick = () => renderVoting();
   $("vote-form").onsubmit = async e => {
     e.preventDefault();
-    if(studentPreview && !studentPreviewEditing){ toast("目前是唯讀預覽，請先啟用編修功能"); return; }
     const ids = [...document.querySelectorAll(".vote-option:checked")].map(c=>Number(c.value));
     if(ids.length !== 2) return;
     const feedback = $("vote-feedback").value;
@@ -598,25 +547,6 @@ async function renderVoting(){
     toast(editing ? "投票修改已送出" : "投票已送出，謝謝你的選擇");
     renderVoting(); renderReport(); refreshVoteCountStat(); refreshStudentProgress();
   };
-}
-
-function renderAdminPreviewVoting(){
-  const groups = groupsGrouped();
-  $("voting-container").innerHTML = `<div class="mb-5 rounded-2xl border border-sun/50 bg-sun/10 p-4 text-sm text-muted">
-    <p class="font-black text-brand">管理者學生預覽</p>
-    <p class="mt-1">以下為分組投票的學生操作畫面示意。控制項已停用，不會讀取或修改任何學生的正式投票資料。</p>
-  </div>
-  <div class="rounded-3xl border border-line bg-white p-5 shadow-soft sm:p-7">
-    <div class="grid gap-4 sm:grid-cols-2"><div class="rounded-2xl bg-canvas p-4"><p class="text-xs font-bold text-muted">系級＋姓名</p><p class="mt-1 font-black">學生預覽</p></div>
-    <div class="rounded-2xl bg-canvas p-4"><p class="text-xs font-bold text-muted">自己的組別</p><p class="mt-1 font-black">學生登入後顯示</p></div></div>
-    <div class="mt-7 flex items-end justify-between"><div><h4 class="text-lg font-black">最喜歡的組別</h4><p class="mt-1 text-sm text-muted">一人兩票，選出最喜歡的提案。</p></div>
-    <span class="rounded-full bg-sun/20 px-3 py-1 text-xs font-black">0 / 2</span></div>
-    <div class="mt-5 grid gap-3 sm:grid-cols-2">${groups.map(g=>`<label class="flex cursor-not-allowed items-center justify-between rounded-2xl border border-line bg-gray-50 p-4 opacity-70">
-      <span><span class="block font-black">${esc(g.name)}</span><span class="mt-1 block text-xs text-muted">${esc(g.topic)}</span></span>
-      <input type="checkbox" disabled class="h-5 w-5 accent-brand"></label>`).join("") || '<p class="text-sm text-muted">目前尚無小組資料。</p>'}</div>
-    <label class="mt-6 block"><span class="mb-2 block font-black">投票後回饋</span><textarea rows="4" disabled class="w-full resize-none rounded-2xl border border-line bg-gray-50 px-4 py-3 text-sm leading-6 opacity-70" placeholder="學生可在這裡填寫匿名回饋"></textarea></label>
-    <button type="button" disabled class="mt-5 w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white opacity-40">預覽模式（不可送出）</button>
-  </div>`;
 }
 
 /* ---------------------------------------------------------------------------
@@ -660,7 +590,6 @@ function openView(id){
   if(id==="report-view") renderReport();
 }
 document.querySelectorAll(".nav-btn[data-view]").forEach(b=>b.onclick=()=>openView(b.dataset.view));
-$("student-preview-nav").onclick = () => startAdminStudentPreview();
 
 /* ---------------------------------------------------------------------------
    教師專用：登入（Supabase Auth）
@@ -688,13 +617,15 @@ $("admin-form").onsubmit = async e => {
 $("teacher-logout-btn").onclick = async () => {
   await sb.auth.signOut();
   teacherSession=null;
-  adminPreviewMode = false;
-  $("student-preview-nav").classList.add("hidden");
   $("teacher-logout-btn").classList.add("hidden");
   renderGroups();
   toast("教師已登出");
 };
 async function enterTeacherArea(){
+  currentUser = null;
+  clearStudentSession();
+  $("user-chip").classList.add("hidden");
+  $("student-progress").classList.add("hidden");
   $("login-modal").classList.add("hidden");
   viewingTermKey = activeTermKey;
   viewingAcademicYear = activeAcademicYear;
@@ -703,7 +634,6 @@ async function enterTeacherArea(){
   else {
     $("admin-whoami").textContent = whoami;
     $("admin-panel").classList.remove("hidden");
-    $("student-preview-nav").classList.remove("hidden");
     await renderTeacherControls();
     await renderAdmin();
     await refreshTeacherGroupView();
@@ -899,48 +829,7 @@ function renderAdminRoster(students, groups, targetId = "admin-content"){
           `<span class="rounded-full border border-sun/40 bg-white px-3 py-1.5 text-xs font-bold text-muted">${esc(student.name)}<span class="ml-1 font-normal">(${esc(student.student_id)})</span></span>`
         ).join("")}</div>
       </div>` : ""}
-      <div class="mt-5 border-t border-line pt-5">
-        <p class="text-sm font-black text-brand">管理者學生預覽</p>
-        <p class="mt-1 text-xs text-muted">以管理者身分查看學生會看到的分組名單畫面，不需要選擇學生，也不會修改任何資料。</p>
-        <button id="student-preview-start" class="mt-3 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-dark">開啟學生預覽</button>
-      </div>
-    </section>`);
-  $("student-preview-start").onclick = () => startAdminStudentPreview();
-}
-
-function startAdminStudentPreview(){
-  adminPreviewMode = true;
-  studentPreview = false;
-  studentPreviewEditing = false;
-  $("admin-panel").classList.add("hidden");
-  $("student-preview-nav").classList.remove("hidden");
-  openView("group-list-view");
-  renderGroups();
-  toast("已開啟管理者學生預覽（唯讀）");
-}
-
-function startStudentPreview(student){
-  studentPreview = true;
-  studentPreviewEditing = false;
-  adminPreviewMode = false;
-  currentUser = { ...student };
-  renderGroups();
-  refreshStudentProgress();
-  toast(`已切換為 ${student.name} 的學生視角`);
-}
-function exitStudentPreview(){
-  studentPreview = false;
-  studentPreviewEditing = false;
-  adminPreviewMode = false;
-  currentUser = null;
-  $("student-progress").classList.add("hidden");
-  if(teacherSession){
-    $("admin-panel").classList.remove("hidden");
-    renderAdmin();
-  }
-  renderGroups();
-  if(teacherSession) $("student-preview-nav").classList.remove("hidden");
-  toast("已結束學生視角預覽");
+   </section>`);
 }
 
 function renderAdminGrouping(term, students, groups, targetId = "admin-content"){
@@ -1221,9 +1110,15 @@ $("print-btn").onclick = exportPdf;
 --------------------------------------------------------------------------- */
 (async function init(){
   const { data: { session } } = await sb.auth.getSession();
-  if(session){ teacherSession = session; $("teacher-logout-btn").classList.remove("hidden"); }
+  if(session){
+    teacherSession = session;
+    teacherEntry = "admin";
+    $("teacher-logout-btn").classList.remove("hidden");
+  }
   await tryRestoreSession();
-  if(!currentUser && !teacherSession){
+  if(teacherSession){
+    await enterTeacherArea();
+  } else if(!currentUser){
     teacherEntry = "import";
     openTeacherGate();
   }
