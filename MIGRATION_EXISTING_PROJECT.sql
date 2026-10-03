@@ -131,6 +131,11 @@ where active_academic_year is null;
 alter table course_settings alter column active_academic_year set default '1151';
 alter table course_settings alter column active_academic_year set not null;
 
+-- 目前使用 1151 學年度；舊 course_id 只作為資料庫識別碼，不再顯示 1142。
+update terms
+set course_name = '文化創意產業'
+where course_id = '1142_CCI' and academic_year = '1151';
+
 -- 舊版唯一鍵只限制 course_id + term_key，會阻擋不同學年度並存。
 -- 同時移除兩種可能已存在的名稱，避免重跑時出現 constraint already exists。
 alter table terms drop constraint if exists terms_course_id_term_key_key;
