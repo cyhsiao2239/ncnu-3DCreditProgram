@@ -285,11 +285,25 @@ async function loadGroupRoster(termId){
     return;
   }
   groupRoster = (data || []).flatMap(row => {
-    const members = Array.isArray(row.members) ? row.members : [];
+    const members = normaliseMemberArray(row.members);
     return members.length
       ? members.map(member_name => ({ group_no:row.group_no, name:row.name, topic:row.topic, member_name }))
       : [{ group_no:row.group_no, name:row.name, topic:row.topic, member_name:null }];
   });
+  if(currentUser) renderGroups();
+}
+function normaliseMemberArray(value){
+  if(Array.isArray(value)) return value.filter(Boolean).map(String);
+  if(typeof value !== "string" || !value.trim()) return [];
+  const text = value.trim();
+  try {
+    const parsed = JSON.parse(text);
+    if(Array.isArray(parsed)) return parsed.filter(Boolean).map(String);
+  } catch {}
+  if(text.startsWith("{") && text.endsWith("}")){
+    return text.slice(1,-1).split(",").map(item => item.trim().replace(/^"(.*)"$/, "$1")).filter(Boolean);
+  }
+  return [text];
 }
 async function refreshCurrentTermData(){
   currentTerm = await fetchTermByKey(activeTermKey, activeAcademicYear);
