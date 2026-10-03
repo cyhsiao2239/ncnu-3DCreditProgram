@@ -376,6 +376,7 @@ $("logout-btn").onclick = () => { clearStudentSession(); location.reload(); };
 --------------------------------------------------------------------------- */
 function renderGroups(){
   const groups = groupsGrouped();
+  document.querySelectorAll(".admin-group-view").forEach(element => element.remove());
   $("group-grid").innerHTML = groups.map(g => {
     const mine = currentUser && g.group_no === myGroupNo();
     return `<article class="relative overflow-hidden rounded-3xl border ${mine?'border-sun ring-2 ring-sun/30':'border-line'} bg-white p-6 shadow-soft transition hover:-translate-y-1 hover:shadow-lift">
@@ -418,6 +419,19 @@ function renderGroups(){
     await loadGroupRoster(currentTerm.id);
     renderGroups(); renderReport(); refreshStudentProgress();
   });
+  if(teacherSession && currentTerm){
+    renderAdminRosterInGroupView();
+  }
+}
+
+async function renderAdminRosterInGroupView(){
+  const { data: students, error } = await sb.from("students").select("*").eq("term_id", currentTerm.id).order("group_no").order("name");
+  if(error){
+    toast("管理者分組名單載入失敗："+error.message);
+    return;
+  }
+  renderAdminRoster(students || [], groupsGrouped(), "group-list-view");
+  renderAdminGrouping(currentTerm, students || [], groupsGrouped(), "group-list-view");
 }
 
 /* ---------------------------------------------------------------------------
@@ -591,14 +605,26 @@ $("admin-form").onsubmit = async e => {
   $("teacher-logout-btn").classList.remove("hidden");
   enterTeacherArea();
 };
-$("teacher-logout-btn").onclick = async () => { await sb.auth.signOut(); teacherSession=null; $("teacher-logout-btn").classList.add("hidden"); toast("教師已登出"); };
+$("teacher-logout-btn").onclick = async () => {
+  await sb.auth.signOut();
+  teacherSession=null;
+  $("teacher-logout-btn").classList.add("hidden");
+  renderGroups();
+  toast("教師已登出");
+};
 async function enterTeacherArea(){
   $("login-modal").classList.add("hidden");
   viewingTermKey = activeTermKey;
   viewingAcademicYear = activeAcademicYear;
   const whoami = teacherSession?.user?.email ? `目前登入：${teacherSession.user.email}` : "";
   if(teacherEntry==="import"){ $("import-whoami").textContent = whoami; $("course-import-panel").classList.remove("hidden"); await renderCourseImport(); }
-  else { $("admin-whoami").textContent = whoami; $("admin-panel").classList.remove("hidden"); await renderTeacherControls(); await renderAdmin(); }
+  else {
+    $("admin-whoami").textContent = whoami;
+    $("admin-panel").classList.remove("hidden");
+    await renderTeacherControls();
+    await renderAdmin();
+    renderGroups();
+  }
 }
 $("admin-close").onclick = () => $("admin-panel").classList.add("hidden");
 $("course-import-close").onclick = () => $("course-import-panel").classList.add("hidden");
@@ -740,11 +766,9 @@ async function renderAdmin(){
       <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[560px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">學生</th><th class="px-3 py-3">投票組別</th><th class="px-3 py-3">最後更新時間</th></tr></thead><tbody>${voteRows}</tbody></table></div></section>
     <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">REFLECTION TRACKER</p><h3 class="mt-1 text-xl font-black">自評填寫名冊</h3>
       <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[760px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">姓名</th><th class="px-3 py-3">組別</th><th class="px-3 py-3">填寫進度</th><th class="px-3 py-3">互評平均</th><th class="px-3 py-3">逐位評分明細</th><th class="px-3 py-3">質性回饋</th></tr></thead><tbody>${evalRows}</tbody></table></div></section>`;
-  renderAdminRoster(students||[], groups||[]);
-  renderAdminGrouping(term, students||[], groups||[]);
 }
 
-function renderAdminRoster(students, groups){
+function renderAdminRoster(students, groups, targetId = "admin-content"){
   const grouped = groups.map(group => {
     const members = students.filter(student => Number(student.group_no) === Number(group.group_no));
     return `<article class="rounded-2xl border border-line bg-canvas p-4">
@@ -758,8 +782,8 @@ function renderAdminRoster(students, groups){
     </article>`;
   }).join("");
   const unassigned = students.filter(student => student.group_no === null || student.group_no === undefined);
-  $("admin-content").insertAdjacentHTML("beforeend", `
-    <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft">
+  $(targetId).insertAdjacentHTML("beforeend", `
+    <section class="admin-group-view mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft">
       <p class="text-sm font-bold text-brand">CURRENT GROUP ROSTER</p>
       <div class="flex flex-wrap items-end justify-between gap-3">
         <h3 class="mt-1 text-xl font-black">各組名單</h3>
@@ -774,10 +798,10 @@ function renderAdminRoster(students, groups){
       </div>` : ""}</section>`);
 }
 
-function renderAdminGrouping(term, students, groups){
+function renderAdminGrouping(term, students, groups, targetId = "admin-content"){
   const existing = students.filter(s => s.group_no !== null).map(s => `${s.group_no}: ${s.name}`).join("\n");
-  $("admin-content").insertAdjacentHTML("beforeend", `
-    <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft">
+  $(targetId).insertAdjacentHTML("beforeend", `
+    <section class="admin-group-view mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft">
       <p class="text-sm font-bold text-brand">GROUP MANAGEMENT</p>
       <h3 class="mt-1 text-xl font-black">管理者分組</h3>
       <p class="mt-2 text-sm leading-6 text-muted">每行格式：<b>組別：姓名 姓名</b>。未列出的學生會保持「待分組」。可先貼上目前已知的分組，之後再補分組。</p>
@@ -802,6 +826,10 @@ function renderAdminGrouping(term, students, groups){
       }
       toast(`已套用分組：${assignments.filter(a=>a.groupNo !== null).length} 位學生，${assignments.filter(a=>a.groupNo === null).length} 位待分組`);
       await renderAdmin();
+      if(targetId === "group-list-view"){
+        await loadGroupRoster(term.id);
+        renderGroups();
+      }
     } catch(err){
       console.error(err);
       errorBox.textContent = "分組套用失敗："+err.message;
