@@ -128,7 +128,7 @@
     </form>
     <div class="mt-5 border-t border-line pt-5 text-center">
       <p class="mb-2 text-xs text-muted">教師或 TA 請先登入以匯入名冊</p>
-      <button id="login-teacher-btn" type="button" class="rounded-xl border border-brand px-4 py-2.5 text-sm font-bold text-brand transition hover:bg-brand/5">教師／TA 登入並匯入名冊</button>
+      <button id="login-teacher-btn" type="button" class="rounded-xl border border-brand px-4 py-2.5 text-sm font-bold text-brand transition hover:bg-brand/5">教師／TA 登入</button>
     </div>
   </div>
 </div>
@@ -597,7 +597,7 @@ document.querySelectorAll(".nav-btn[data-view]").forEach(b=>b.onclick=()=>openVi
 $("teacher-menu-btn").onclick = () => $("teacher-menu").classList.toggle("hidden");
 $("admin-btn").onclick = () => { teacherEntry="admin"; openTeacherGate(); };
 $("course-import-btn").onclick = () => { teacherEntry="import"; openTeacherGate(); };
-$("login-teacher-btn").onclick = () => { teacherEntry="import"; openTeacherGate(); };
+$("login-teacher-btn").onclick = () => { teacherEntry="admin"; openTeacherGate(); };
 function openTeacherGate(){
   $("teacher-menu").classList.add("hidden");
   if(teacherSession){ enterTeacherArea(); return; }
@@ -1118,9 +1118,6 @@ $("print-btn").onclick = exportPdf;
   await tryRestoreSession();
   if(teacherSession){
     await enterTeacherArea();
-  } else if(!currentUser){
-    teacherEntry = "import";
-    openTeacherGate();
   }
 })();
 </script>
