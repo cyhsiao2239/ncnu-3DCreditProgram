@@ -201,6 +201,7 @@ let currentUser = JSON.parse(localStorage.getItem("cci-current-user") || "null")
 let groupRoster = [];              // [{group_no,name,topic,member_name}]
 let teacherEntry = "admin";
 let teacherSession = null;
+let studentPreview = false;
 let studentIdleTimer = null;
 
 function groupsGrouped(){
@@ -377,6 +378,7 @@ $("logout-btn").onclick = () => { clearStudentSession(); location.reload(); };
 function renderGroups(){
   const groups = groupsGrouped();
   document.querySelectorAll(".admin-group-view").forEach(element => element.remove());
+  document.querySelectorAll(".student-preview-banner").forEach(element => element.remove());
   $("group-grid").innerHTML = groups.map(g => {
     const mine = currentUser && g.group_no === myGroupNo();
     return `<article class="relative overflow-hidden rounded-3xl border ${mine?'border-sun ring-2 ring-sun/30':'border-line'} bg-white p-6 shadow-soft transition hover:-translate-y-1 hover:shadow-lift">
@@ -419,8 +421,15 @@ function renderGroups(){
     await loadGroupRoster(currentTerm.id);
     renderGroups(); renderReport(); refreshStudentProgress();
   });
-  if(teacherSession && currentTerm){
+  if(teacherSession && currentTerm && !studentPreview){
     renderAdminRosterInGroupView();
+  }
+  if(studentPreview){
+    $("group-list-view").insertAdjacentHTML("afterbegin", `<div class="student-preview-banner mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sun/50 bg-sun/10 p-4">
+      <div><p class="text-sm font-black text-brand">學生視角預覽</p><p class="mt-1 text-xs text-muted">目前模擬：${esc(currentUser?.name || "")}（${esc(currentUser?.student_id || "")}）</p></div>
+      <button id="exit-student-preview" class="rounded-xl border border-line bg-white px-3 py-2 text-xs font-bold text-brand hover:border-brand">結束預覽</button>
+    </div>`);
+    $("exit-student-preview").onclick = exitStudentPreview;
   }
 }
 
@@ -795,7 +804,39 @@ function renderAdminRoster(students, groups, targetId = "admin-content"){
         <div class="mt-3 flex flex-wrap gap-2">${unassigned.map(student =>
           `<span class="rounded-full border border-sun/40 bg-white px-3 py-1.5 text-xs font-bold text-muted">${esc(student.name)}<span class="ml-1 font-normal">(${esc(student.student_id)})</span></span>`
         ).join("")}</div>
-      </div>` : ""}</section>`);
+      </div>` : ""}
+      <div class="mt-5 border-t border-line pt-5">
+        <p class="text-sm font-black text-brand">學生視角預覽</p>
+        <p class="mt-1 text-xs text-muted">選擇名單中的學生，預覽同學看到的畫面；不會修改資料。</p>
+        <div class="mt-3 flex flex-wrap gap-2">
+          <select id="student-preview-select" class="min-w-56 rounded-xl border border-line bg-white px-3 py-2 text-sm">
+            <option value="">請選擇學生</option>
+            ${students.map(student => `<option value="${esc(student.student_id)}">${esc(student.name)}（${esc(student.student_id)}）</option>`).join("")}
+          </select>
+          <button id="student-preview-start" class="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-dark">開始預覽</button>
+        </div>
+      </div>
+    </section>`);
+  $("student-preview-start").onclick = () => {
+    const student = students.find(item => item.student_id === $("student-preview-select").value);
+    if(!student){ toast("請先選擇學生"); return; }
+    startStudentPreview(student);
+  };
+}
+
+function startStudentPreview(student){
+  studentPreview = true;
+  currentUser = { ...student };
+  renderGroups();
+  refreshStudentProgress();
+  toast(`已切換為 ${student.name} 的學生視角`);
+}
+function exitStudentPreview(){
+  studentPreview = false;
+  currentUser = null;
+  $("student-progress").classList.add("hidden");
+  renderGroups();
+  toast("已結束學生視角預覽");
 }
 
 function renderAdminGrouping(term, students, groups, targetId = "admin-content"){
