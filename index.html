@@ -470,7 +470,7 @@ async function renderAdminRosterInGroupView(){
 --------------------------------------------------------------------------- */
 async function renderEval(){
   if(adminPreviewMode){
-    $("eval-container").innerHTML = `<div class="rounded-3xl border border-line bg-white p-8 text-center shadow-soft"><h4 class="text-xl font-black">學生預覽模式</h4><p class="mt-2 text-sm leading-6 text-muted">這是管理者的唯讀預覽，不會載入或送出任何學生自評資料。</p></div>`;
+    renderAdminPreviewEval();
     return;
   }
   if(!hasGroupAssignment()){
@@ -525,12 +525,31 @@ function renderEvalFormWithIds(members, existing){
   };
 }
 
+function renderAdminPreviewEval(){
+  const groups = groupsGrouped();
+  const members = groups.flatMap(group => group.members.map(name => ({ name, groupName: group.name })));
+  $("eval-container").innerHTML = `<div class="mb-5 rounded-2xl border border-sun/50 bg-sun/10 p-4 text-sm text-muted">
+    <p class="font-black text-brand">管理者學生預覽</p>
+    <p class="mt-1">以下為小組自評的學生操作畫面示意。控制項已停用，不會讀取或修改任何學生的正式自評資料。</p>
+  </div>
+  <div class="rounded-3xl border border-line bg-white p-5 shadow-soft sm:p-7">
+    <div class="mb-6 rounded-2xl bg-canvas p-4"><p class="text-sm font-black text-brand">小組自評</p><p class="mt-1 text-sm text-muted">學生會在這裡為同組成員評分 0 到 10 分。</p></div>
+    <div class="space-y-4">${members.map(member => `<div class="rounded-2xl border border-line p-4">
+      <div class="flex items-center justify-between gap-3"><div><p class="font-black">${esc(member.name)}</p><p class="text-xs text-muted">${esc(member.groupName)}</p></div>
+      <span class="rounded-full bg-canvas px-3 py-1 text-xs font-black text-muted">未選擇</span></div>
+      <div class="mt-4 grid grid-cols-6 gap-2 sm:grid-cols-11">${Array.from({length:11},(_,i)=>`<button type="button" disabled class="rounded-lg border border-line py-2 text-sm font-bold opacity-50">${i}</button>`).join("")}</div>
+    </div>`).join("") || '<p class="text-sm text-muted">目前尚無組員資料。</p>'}</div>
+    <label class="mt-6 block"><span class="mb-2 block font-black">建議與回饋</span><textarea rows="4" disabled class="w-full resize-none rounded-2xl border border-line bg-gray-50 px-4 py-3 text-sm leading-6 opacity-70" placeholder="學生可在這裡填寫小組回饋"></textarea></label>
+    <button type="button" disabled class="mt-5 w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white opacity-40">預覽模式（不可送出）</button>
+  </div>`;
+}
+
 /* ---------------------------------------------------------------------------
    分組投票
 --------------------------------------------------------------------------- */
 async function renderVoting(){
   if(adminPreviewMode){
-    $("voting-container").innerHTML = `<div class="rounded-3xl border border-line bg-white p-8 text-center shadow-soft"><h4 class="text-xl font-black">學生預覽模式</h4><p class="mt-2 text-sm leading-6 text-muted">這是管理者的唯讀預覽，不會載入或送出任何學生投票資料。</p></div>`;
+    renderAdminPreviewVoting();
     return;
   }
   if(!hasGroupAssignment()){
@@ -581,6 +600,25 @@ async function renderVoting(){
   };
 }
 
+function renderAdminPreviewVoting(){
+  const groups = groupsGrouped();
+  $("voting-container").innerHTML = `<div class="mb-5 rounded-2xl border border-sun/50 bg-sun/10 p-4 text-sm text-muted">
+    <p class="font-black text-brand">管理者學生預覽</p>
+    <p class="mt-1">以下為分組投票的學生操作畫面示意。控制項已停用，不會讀取或修改任何學生的正式投票資料。</p>
+  </div>
+  <div class="rounded-3xl border border-line bg-white p-5 shadow-soft sm:p-7">
+    <div class="grid gap-4 sm:grid-cols-2"><div class="rounded-2xl bg-canvas p-4"><p class="text-xs font-bold text-muted">系級＋姓名</p><p class="mt-1 font-black">學生預覽</p></div>
+    <div class="rounded-2xl bg-canvas p-4"><p class="text-xs font-bold text-muted">自己的組別</p><p class="mt-1 font-black">學生登入後顯示</p></div></div>
+    <div class="mt-7 flex items-end justify-between"><div><h4 class="text-lg font-black">最喜歡的組別</h4><p class="mt-1 text-sm text-muted">一人兩票，選出最喜歡的提案。</p></div>
+    <span class="rounded-full bg-sun/20 px-3 py-1 text-xs font-black">0 / 2</span></div>
+    <div class="mt-5 grid gap-3 sm:grid-cols-2">${groups.map(g=>`<label class="flex cursor-not-allowed items-center justify-between rounded-2xl border border-line bg-gray-50 p-4 opacity-70">
+      <span><span class="block font-black">${esc(g.name)}</span><span class="mt-1 block text-xs text-muted">${esc(g.topic)}</span></span>
+      <input type="checkbox" disabled class="h-5 w-5 accent-brand"></label>`).join("") || '<p class="text-sm text-muted">目前尚無小組資料。</p>'}</div>
+    <label class="mt-6 block"><span class="mb-2 block font-black">投票後回饋</span><textarea rows="4" disabled class="w-full resize-none rounded-2xl border border-line bg-gray-50 px-4 py-3 text-sm leading-6 opacity-70" placeholder="學生可在這裡填寫匿名回饋"></textarea></label>
+    <button type="button" disabled class="mt-5 w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white opacity-40">預覽模式（不可送出）</button>
+  </div>`;
+}
+
 /* ---------------------------------------------------------------------------
    成果報告（學生可見，投票匿名）
 --------------------------------------------------------------------------- */
@@ -615,10 +653,6 @@ async function renderReport(){
    分頁切換
 --------------------------------------------------------------------------- */
 function openView(id){
-  if(adminPreviewMode && id !== "group-list-view" && id !== "report-view"){
-    id = "group-list-view";
-    toast("學生預覽目前提供唯讀的分組名單畫面");
-  }
   document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active", v.id===id));
   document.querySelectorAll(".nav-btn[data-view]").forEach(b=>b.classList.toggle("active", b.dataset.view===id));
   if(id==="self-eval-view") renderEval();
