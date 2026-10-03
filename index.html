@@ -792,6 +792,23 @@ async function renderAdmin(){
     <td class="px-3 py-3 text-muted">${v.selected_groups.map(gn=>esc(groupNameOf(gn))).join("、")}</td>
     <td class="px-3 py-3 text-xs text-muted">${esc(new Date(v.updated_at).toLocaleString("zh-TW"))}</td></tr>`).join("")
     || '<tr><td colspan="3" class="px-3 py-3 text-muted">目前尚無投票紀錄</td></tr>';
+  const evalGroupRows = (groups||[]).map(group => {
+    const members = (students||[]).filter(student => Number(student.group_no) === Number(group.group_no));
+    const submitted = members.filter(student => (evaluations||[]).some(item => item.evaluator_id === student.student_id));
+    const scores = submitted.flatMap(student => {
+      const evaluation = (evaluations||[]).find(item => item.evaluator_id === student.student_id);
+      return evaluation ? Object.values(evaluation.scores).map(Number) : [];
+    });
+    const average = scores.length ? (scores.reduce((sum, score) => sum + score, 0) / scores.length).toFixed(1) : "—";
+    return `<tr class="border-b border-line last:border-0"><td class="px-3 py-3 font-bold">${esc(group.name)}</td>
+      <td class="px-3 py-3">${submitted.length} / ${members.length} 人</td><td class="px-3 py-3 font-black text-brand">${average}</td>
+      <td class="px-3 py-3 text-muted">${submitted.length ? "已有自評資料" : "尚無自評資料"}</td></tr>`;
+  }).join("") || '<tr><td colspan="4" class="px-3 py-3 text-muted">目前尚無小組資料</td></tr>';
+  const voteGroupRows = (groups||[]).map(group => {
+    const selected = (votes||[]).filter(vote => vote.selected_groups.includes(group.group_no)).length;
+    return `<tr class="border-b border-line last:border-0"><td class="px-3 py-3 font-bold">${esc(group.name)}</td>
+      <td class="px-3 py-3 font-black text-brand">${selected} 票</td><td class="px-3 py-3 text-muted">${selected ? "已有投票" : "尚無投票"}</td></tr>`;
+  }).join("") || '<tr><td colspan="3" class="px-3 py-3 text-muted">目前尚無小組資料</td></tr>';
 
   $("admin-content").innerHTML = `
     <div class="grid gap-5 lg:grid-cols-[.9fr_1.1fr]">
@@ -801,6 +818,12 @@ async function renderAdmin(){
       <section class="rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">ACTIVITY NOTES</p><h3 class="mt-1 text-xl font-black">課程活動摘要</h3>
         <div class="mt-5 grid grid-cols-2 gap-3"><div class="rounded-2xl bg-canvas p-4"><p class="text-xs text-muted">學生人數</p><p class="mt-1 text-2xl font-black">${(students||[]).length}</p></div>
         <div class="rounded-2xl bg-canvas p-4"><p class="text-xs text-muted">完成率</p><p class="mt-1 text-2xl font-black">${(students||[]).length?Math.round((evaluations||[]).length/(students||[]).length*100):0}%</p></div></div></section>
+    </div>
+    <div class="mt-5 grid gap-5 lg:grid-cols-2">
+      <section class="rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">GROUP SELF-EVALUATION</p><h3 class="mt-1 text-xl font-black">各組小組自評</h3>
+        <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[520px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">組別</th><th class="px-3 py-3">完成進度</th><th class="px-3 py-3">平均分數</th><th class="px-3 py-3">狀態</th></tr></thead><tbody>${evalGroupRows}</tbody></table></div></section>
+      <section class="rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">GROUP VOTING</p><h3 class="mt-1 text-xl font-black">各組分組投票</h3>
+        <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[420px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">組別</th><th class="px-3 py-3">票數</th><th class="px-3 py-3">狀態</th></tr></thead><tbody>${voteGroupRows}</tbody></table></div></section>
     </div>
     <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">VOTE RECORDS</p><h3 class="mt-1 text-xl font-black">分組投票紀錄與時間</h3>
       <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[560px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">學生</th><th class="px-3 py-3">投票組別</th><th class="px-3 py-3">最後更新時間</th></tr></thead><tbody>${voteRows}</tbody></table></div></section>
