@@ -153,7 +153,9 @@ $$;
 -- 取得某期別的分組名單（含組員姓名，前端「查看分組名單」使用）
 create or replace function get_group_roster(p_term_id uuid)
 returns table (group_no int, name text, topic text, member_name text)
-language sql security definer as $$
+language sql security definer
+set search_path = public
+as $$
   select g.group_no, g.name, g.topic, s.name as member_name
   from groups g
   left join students s on s.term_id = g.term_id and s.group_no = g.group_no

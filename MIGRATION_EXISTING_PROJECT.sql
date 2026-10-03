@@ -98,7 +98,9 @@ create policy "teacher manage staff_members" on staff_members for all
 -- 確保查看分組名單會從目前期別的 students 回傳組員。
 create or replace function get_group_roster(p_term_id uuid)
 returns table (group_no int, name text, topic text, member_name text)
-language sql security definer as $$
+language sql security definer
+set search_path = public
+as $$
   select g.group_no, g.name, g.topic, s.name as member_name
   from groups g
   left join students s

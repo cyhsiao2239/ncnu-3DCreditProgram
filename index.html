@@ -278,7 +278,13 @@ async function fetchTermByKey(termKey, academicYear = activeAcademicYear){
 }
 async function loadGroupRoster(termId){
   const { data, error } = await sb.rpc("get_group_roster", { p_term_id: termId });
-  groupRoster = error ? [] : (data || []);
+  if(error){
+    console.error("get_group_roster failed:", error);
+    groupRoster = [];
+    toast("分組名單載入失敗，請確認資料庫 migration 已更新");
+    return;
+  }
+  groupRoster = data || [];
 }
 async function refreshCurrentTermData(){
   currentTerm = await fetchTermByKey(activeTermKey, activeAcademicYear);
