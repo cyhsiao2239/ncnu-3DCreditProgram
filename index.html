@@ -187,6 +187,16 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
 function toast(msg){ const el=$("toast"); el.textContent=msg; el.classList.remove("hidden"); setTimeout(()=>el.classList.add("hidden"),2800); }
+function sendWebhook(payload){
+  const url = localStorage.getItem("cci-gas-webhook-url");
+  if(!url) return;
+  fetch(url, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(payload)
+  }).catch(error => console.error("Google Sheets Webhook 送出失敗：", error));
+}
 
 /* ---------------------------------------------------------------------------
    App 狀態（記憶體內；共用資料一律來自 Supabase，不再用 localStorage 當資料庫）
@@ -500,6 +510,7 @@ function renderEvalFormWithIds(members, existing){
     const feedback = $("eval-feedback").value;
     const { error } = await sb.rpc("submit_evaluation", { p_term_id: currentTerm.id, p_evaluator_id: currentUser.student_id, p_scores: scores, p_feedback: feedback });
     if(error){ $("eval-error").textContent = "送出失敗："+error.message; $("eval-error").classList.remove("hidden"); return; }
+    sendWebhook({ type:"evaluation", academic_year:activeAcademicYear, term_key:activeTermKey, student_id:currentUser.student_id, student_name:currentUser.name, scores, feedback });
     toast("自評已成功送出"); renderEval(); refreshStudentProgress();
   };
 }
@@ -550,6 +561,7 @@ async function renderVoting(){
     const feedback = $("vote-feedback").value;
     const { error } = await sb.rpc("submit_vote", { p_term_id: currentTerm.id, p_student_id: currentUser.student_id, p_groups: ids, p_feedback: feedback });
     if(error){ $("vote-error").textContent = "送出失敗："+error.message; return; }
+    sendWebhook({ type:"vote", academic_year:activeAcademicYear, term_key:activeTermKey, student_id:currentUser.student_id, student_name:currentUser.name, selected_groups:ids, feedback });
     toast(editing ? "投票修改已送出" : "投票已送出，謝謝你的選擇");
     renderVoting(); renderReport(); refreshVoteCountStat(); refreshStudentProgress();
   };

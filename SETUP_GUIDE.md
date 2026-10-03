@@ -101,4 +101,15 @@ Supabase Authentication 帳號；每位教師／助教仍須先在 Authenticatio
 - **anon key 會出現在網站原始碼裡，這是正常且必要的**（Supabase 的設計本來就是前端直接用這組 key 呼叫資料庫），真正的保護是我們設定的資料庫規則（RLS）與驗證函式：學生只能透過受限制的函式讀寫「自己」的資料，看不到全班名冊；老師功能則需要 Supabase Auth 帳密才能使用。
 - 因為學生登入只用「學號＋姓名」、沒有密碼，**理論上知道同學學號姓名的人可以冒名投票或填自評**——這是這次您選擇「簡單快速」登入方式的必然取捨。如果之後想加強，最簡單的做法是在 `students` 表加一個 `access_code`（例如學號後四碼）欄位，登入時多比對一個欄位即可，我可以之後協助加。
 - Google Sheets Webhook 是「選用備份」，不是必要步驟，不設定也完全不影響系統運作。
+
+### Google Sheets Webhook 測試
+
+1. 開啟 Google 試算表 → **擴充功能 → Apps Script**。
+2. 將 [GOOGLE_APPS_SCRIPT.gs](./GOOGLE_APPS_SCRIPT.gs) 的內容貼入 Apps Script。
+3. 將 `SPREADSHEET_ID` 改成試算表網址 `/d/` 與 `/edit` 之間的文字，並確認工作表名稱為 `Responses`。
+4. 點選 **部署 → 新增部署作業 → 網頁應用程式**：
+   - 執行身分：我
+   - 存取權：任何人
+5. 複製結尾為 `/exec` 的網址，貼到網站「Google Apps Script Webhook」欄位並儲存。
+6. 學生成功送出自評或投票後，資料會新增到 `Responses` 工作表。Supabase 仍是正式資料來源，試算表只作為備份與統計。
 - 如果之後想要「即時看到別人剛剛投的票」而不用手動重新整理，可以再加 Supabase 的 Realtime 訂閱功能，屬於加分項，目前版本是「送出後重新查詢」，對課堂使用已經足夠。
