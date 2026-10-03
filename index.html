@@ -277,14 +277,19 @@ async function fetchTermByKey(termKey, academicYear = activeAcademicYear){
   return data;
 }
 async function loadGroupRoster(termId){
-  const { data, error } = await sb.rpc("get_group_roster", { p_term_id: termId });
+  const { data, error } = await sb.rpc("get_public_group_roster", { p_term_id: termId });
   if(error){
     console.error("get_group_roster failed:", error);
     groupRoster = [];
     toast("分組名單載入失敗，請確認資料庫 migration 已更新");
     return;
   }
-  groupRoster = data || [];
+  groupRoster = (data || []).flatMap(row => {
+    const members = Array.isArray(row.members) ? row.members : [];
+    return members.length
+      ? members.map(member_name => ({ group_no:row.group_no, name:row.name, topic:row.topic, member_name }))
+      : [{ group_no:row.group_no, name:row.name, topic:row.topic, member_name:null }];
+  });
 }
 async function refreshCurrentTermData(){
   currentTerm = await fetchTermByKey(activeTermKey, activeAcademicYear);

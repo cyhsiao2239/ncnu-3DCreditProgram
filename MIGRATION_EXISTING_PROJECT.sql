@@ -112,6 +112,31 @@ $$;
 
 grant execute on function get_group_roster(uuid) to anon, authenticated;
 
+-- 以每組一列、組員陣列的形式提供前端，避免舊 RPC／schema cache 遺留問題。
+create or replace function get_public_group_roster(p_term_id uuid)
+returns table (group_no int, name text, topic text, members text[])
+language sql security definer
+set search_path = public
+as $$
+  select
+    g.group_no,
+    g.name,
+    g.topic,
+    coalesce(
+      array_agg(s.name order by s.name) filter (where s.name is not null),
+      '{}'::text[]
+    ) as members
+  from groups g
+  left join students s
+    on s.term_id = g.term_id
+   and s.group_no = g.group_no
+  where g.term_id = p_term_id
+  group by g.group_no, g.name, g.topic
+  order by g.group_no;
+$$;
+
+grant execute on function get_public_group_roster(uuid) to anon, authenticated;
+
 -- 3. 加入學年度，並保留既有資料的舊學年度標記。
 alter table terms add column if not exists academic_year text;
 update terms

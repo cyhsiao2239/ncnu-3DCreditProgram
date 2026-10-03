@@ -163,6 +163,28 @@ as $$
   order by g.group_no, s.name;
 $$;
 
+create or replace function get_public_group_roster(p_term_id uuid)
+returns table (group_no int, name text, topic text, members text[])
+language sql security definer
+set search_path = public
+as $$
+  select
+    g.group_no,
+    g.name,
+    g.topic,
+    coalesce(
+      array_agg(s.name order by s.name) filter (where s.name is not null),
+      '{}'::text[]
+    ) as members
+  from groups g
+  left join students s
+    on s.term_id = g.term_id
+   and s.group_no = g.group_no
+  where g.term_id = p_term_id
+  group by g.group_no, g.name, g.topic
+  order by g.group_no;
+$$;
+
 -- 取得「自己那一組」的組員學號＋姓名（僅限同組，不會外洩全班名冊）
 create or replace function get_my_group_members(p_term_id uuid, p_student_id text)
 returns table (student_id text, name text, dept text)
@@ -283,7 +305,8 @@ $$;
 -- 執行權限：anon（前端未登入 Supabase Auth 的訪客）可以呼叫上面這些函式
 -- ============================================================================
 grant execute on function login_check, get_group_roster, get_my_group_members, submit_evaluation, get_my_evaluation,
-  submit_vote, get_my_vote, get_vote_totals, get_anonymous_vote_feedback, update_group_topic
+  submit_vote, get_my_vote, get_vote_totals, get_anonymous_vote_feedback, update_group_topic,
+  get_public_group_roster
   to anon, authenticated;
 
 -- ============================================================================
