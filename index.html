@@ -202,6 +202,7 @@ let groupRoster = [];              // [{group_no,name,topic,member_name}]
 let teacherEntry = "admin";
 let teacherSession = null;
 let studentPreview = false;
+let studentPreviewEditing = false;
 let studentIdleTimer = null;
 
 function groupsGrouped(){
@@ -427,8 +428,18 @@ function renderGroups(){
   if(studentPreview){
     $("group-list-view").insertAdjacentHTML("afterbegin", `<div class="student-preview-banner mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sun/50 bg-sun/10 p-4">
       <div><p class="text-sm font-black text-brand">學生視角預覽</p><p class="mt-1 text-xs text-muted">目前模擬：${esc(currentUser?.name || "")}（${esc(currentUser?.student_id || "")}）</p></div>
-      <button id="exit-student-preview" class="rounded-xl border border-line bg-white px-3 py-2 text-xs font-bold text-brand hover:border-brand">結束預覽</button>
+      <div class="flex flex-wrap gap-2">
+        <button id="toggle-student-preview-edit" class="rounded-xl ${studentPreviewEditing ? "bg-brand text-white" : "border border-line bg-white text-brand"} px-3 py-2 text-xs font-bold hover:border-brand">${studentPreviewEditing ? "編修功能已啟用" : "啟用編修功能"}</button>
+        <button id="exit-student-preview" class="rounded-xl border border-line bg-white px-3 py-2 text-xs font-bold text-brand hover:border-brand">結束預覽</button>
+      </div>
     </div>`);
+    $("toggle-student-preview-edit").onclick = () => {
+      studentPreviewEditing = !studentPreviewEditing;
+      renderGroups();
+      renderEval();
+      renderVoting();
+      toast(studentPreviewEditing ? "已啟用編修功能，送出內容會寫入正式結果" : "已關閉編修功能，目前為唯讀預覽");
+    };
     $("exit-student-preview").onclick = exitStudentPreview;
   }
 }
@@ -478,7 +489,7 @@ function renderEvalFormWithIds(members, existing){
     </div>`).join("")}</div>
     <label class="mt-6 block"><span class="mb-2 block font-black">建議與回饋</span><textarea id="eval-feedback" rows="4" class="w-full resize-none rounded-2xl border border-line px-4 py-3 text-sm leading-6 outline-none focus:border-brand" placeholder="想誇獎小組組員或是有想要反映的都可以寫下來哦（ex.某個組員做的很多 or 某個組員都沒有做事）">${esc(existing.feedback||"")}</textarea></label>
     <p id="eval-error" class="mt-4 hidden rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600"></p>
-    <button id="eval-submit" class="mt-5 w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white hover:bg-brand-dark">確認送出自評</button>
+    <button id="eval-submit" ${studentPreview && !studentPreviewEditing ? "disabled" : ""} class="mt-5 w-full rounded-xl bg-brand px-4 py-3.5 font-black text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40">${studentPreview && !studentPreviewEditing ? "預覽模式（啟用編修後才能送出）" : "確認送出自評"}</button>
   </form>`;
   let scores = {...existing.scores};
   document.querySelectorAll(".score-btn").forEach(btn => btn.onclick = () => {
@@ -488,6 +499,7 @@ function renderEvalFormWithIds(members, existing){
   });
   $("eval-form").onsubmit = async e => {
     e.preventDefault();
+    if(studentPreview && !studentPreviewEditing){ toast("目前是唯讀預覽，請先啟用編修功能"); return; }
     if(members.some(m => scores[m.student_id]===undefined)){
       $("eval-error").textContent = "請先完成所有組員的評分，才能送出。"; $("eval-error").classList.remove("hidden"); return;
     }
@@ -539,6 +551,7 @@ async function renderVoting(){
   if(editing) $("vote-cancel-edit").onclick = () => renderVoting();
   $("vote-form").onsubmit = async e => {
     e.preventDefault();
+    if(studentPreview && !studentPreviewEditing){ toast("目前是唯讀預覽，請先啟用編修功能"); return; }
     const ids = [...document.querySelectorAll(".vote-option:checked")].map(c=>Number(c.value));
     if(ids.length !== 2) return;
     const feedback = $("vote-feedback").value;
@@ -826,6 +839,7 @@ function renderAdminRoster(students, groups, targetId = "admin-content"){
 
 function startStudentPreview(student){
   studentPreview = true;
+  studentPreviewEditing = false;
   currentUser = { ...student };
   renderGroups();
   refreshStudentProgress();
@@ -833,6 +847,7 @@ function startStudentPreview(student){
 }
 function exitStudentPreview(){
   studentPreview = false;
+  studentPreviewEditing = false;
   currentUser = null;
   $("student-progress").classList.add("hidden");
   renderGroups();
