@@ -136,9 +136,9 @@
 <!-- ===================== 教師密碼驗證 ===================== -->
 <div id="admin-modal" class="fixed inset-0 z-50 hidden grid place-items-center modal-backdrop p-4">
   <div class="w-full max-w-sm rounded-[2rem] bg-white p-7 shadow-2xl">
-    <div class="mb-6"><p class="text-sm font-bold text-brand">TEACHER / TA ACCESS</p><h2 class="mt-2 text-2xl font-black">教師／TA 登入</h2><p class="mt-2 text-sm text-muted">請使用 Supabase Authentication 建立的 Email 與密碼。</p></div>
+    <div class="mb-6"><p class="text-sm font-bold text-brand">TEACHER / TA ACCESS</p><h2 class="mt-2 text-2xl font-black">教師／TA 登入</h2><p class="mt-2 text-sm text-muted">請輸入教師員工編號或 TA 學號，以及密碼。</p></div>
     <form id="admin-form" class="space-y-3">
-      <input id="admin-email" type="email" required placeholder="老師 Email" class="w-full rounded-xl border border-line px-4 py-3 outline-none focus:border-brand" />
+      <input id="admin-email" type="text" required placeholder="帳號（教師員工編號／TA學號）" class="w-full rounded-xl border border-line px-4 py-3 outline-none focus:border-brand" />
       <input id="admin-password" type="password" required placeholder="密碼" class="w-full rounded-xl border border-line px-4 py-3 outline-none focus:border-brand" />
       <p id="admin-error" class="hidden text-sm font-bold text-red-600"></p>
       <div class="flex gap-3"><button type="button" id="admin-cancel" class="flex-1 rounded-xl border border-line px-4 py-3 font-bold text-muted">返回學生登入</button><button class="flex-1 rounded-xl bg-brand px-4 py-3 font-bold text-white">登入</button></div>
@@ -607,7 +607,14 @@ $("admin-cancel").onclick = () => { $("admin-modal").classList.add("hidden"); $(
 $("admin-form").onsubmit = async e => {
   e.preventDefault();
   $("admin-error").classList.add("hidden");
-  const { data, error } = await sb.auth.signInWithPassword({ email: $("admin-email").value.trim(), password: $("admin-password").value });
+  const loginId = $("admin-email").value.trim();
+  const { data: staff, error: lookupError } = await sb.rpc("resolve_staff_login", { p_login_id: loginId });
+  if(lookupError || !staff?.length){
+    $("admin-error").textContent = "找不到此帳號，請確認員工編號或學號。";
+    $("admin-error").classList.remove("hidden");
+    return;
+  }
+  const { data, error } = await sb.auth.signInWithPassword({ email: staff[0].email, password: $("admin-password").value });
   if(error){ $("admin-error").textContent = "登入失敗："+error.message; $("admin-error").classList.remove("hidden"); return; }
   teacherSession = data.session;
   $("admin-modal").classList.add("hidden"); $("admin-password").value="";
@@ -937,7 +944,7 @@ async function renderCourseImport(){
     <section class="grid gap-5 lg:grid-cols-2">
       <div class="rounded-3xl border border-line bg-white p-7 shadow-soft">
         <p class="text-sm font-bold text-brand">ROSTER IMPORT</p><h3 class="mt-1 text-2xl font-black">匯入學生名單 CSV / Excel</h3>
-        <p class="mt-3 text-sm leading-6 text-muted">欄位請包含：學號、姓名、系級、組別（或英文 studentId/name/dept/groupId）。組別可先留空，完成分組後再重新匯入更新。標示為教師／助教／admin 的列會自動寫入管理名單並排除於學生名冊。</p>
+        <p class="mt-3 text-sm leading-6 text-muted">欄位請包含：學號、姓名、系級、組別（或英文 studentId/name/dept/groupId）。組別可先留空，完成分組後再重新匯入更新。標示為教師／助教／admin 的列，另需提供登入帳號（教師員工編號／TA學號）與電子郵件，會自動寫入管理名單並排除於學生名冊。</p>
         <label class="mt-5 block text-sm font-bold text-muted">匯入學年度<select id="import-year" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
           ${importYears.map(year => `<option value="${esc(year)}" ${year===activeAcademicYear?"selected":""}>${esc(year)}</option>`).join("")}</select></label>
         <button id="course-roster-import-btn" class="mt-4 rounded-xl bg-brand px-4 py-3 text-sm font-black text-white hover:bg-brand-dark">選擇名冊檔案</button>
@@ -965,7 +972,8 @@ function normaliseRosterRow(row, index){
   const studentId = get("studentId","Student ID","學號","id","名字");
   const name = get("name","Name","姓名","姓氏");
   const email = get("email","Email","電子郵件信箱","email_address").toLowerCase();
-  if(isStaff) return { kind:"staff", email, name, role:"admin" };
+  const loginId = get("login_id","loginId","帳號","登入帳號","員工編號","教職員編號","教師編號") || (isStaff && /助教|ta\b|teaching assistant/i.test(role) ? studentId : "");
+  if(isStaff) return { kind:"staff", loginId, email, name, role:"admin" };
   const dept = get("dept","department","系級","班級") || "";
   const groupValue = get("groupId","group","組別","group_id","groupNo");
   const groupNo = groupValue === "" ? null : Number(groupValue);
@@ -985,7 +993,7 @@ $("roster-file").onchange = async e => {
       const staffRows = normalizedRows.filter(row => row?.kind === "staff");
       const imported = normalizedRows.filter(row => row?.kind === "student");
       if(!imported.length) throw new Error("檔案中沒有可匯入的學生資料");
-      if(staffRows.some(row => !row.email)) throw new Error("教師／助教資料缺少電子郵件信箱");
+      if(staffRows.some(row => !row.email || !row.loginId)) throw new Error("教師／助教資料需要電子郵件與登入帳號（教師員工編號／TA學號）");
       await syncStaffMembers(staffRows);
       await importRosterToAcademicYear(academicYear, imported);
       toast(`已匯入 ${imported.length} 位學生${staffRows.length ? `，已同步 ${staffRows.length} 位教師／助教管理員` : ""}到 ${academicYear} 學年度的期中／期末`);
@@ -1050,6 +1058,7 @@ async function importRosterToTerm(termKey, imported){
 async function syncStaffMembers(staffRows){
   const rows = staffRows.map(row => ({
     course_id: COURSE_ID,
+    login_id: row.loginId,
     email: row.email,
     name: row.name,
     role: "admin",

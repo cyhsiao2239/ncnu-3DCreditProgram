@@ -91,12 +91,14 @@ create table if not exists course_settings (
 create table if not exists staff_members (
   id uuid primary key default gen_random_uuid(),
   course_id text not null,
+  login_id text not null,
   email text not null,
   name text not null default '',
   role text not null default 'admin' check (role = 'admin'),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (course_id, email)
+  unique (course_id, email),
+  unique (course_id, login_id)
 );
 
 -- ============================================================================
@@ -132,6 +134,21 @@ create policy "teacher manage course_settings" on course_settings for all
   using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 create policy "teacher manage staff_members" on staff_members for all
   using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+
+-- 以教師／TA 編號查找對應的 Supabase Auth Email；密碼仍由 Auth 驗證。
+create or replace function resolve_staff_login(p_login_id text)
+returns table (email text)
+language sql security definer
+set search_path = public
+as $$
+  select s.email
+  from staff_members s
+  where lower(s.login_id) = lower(trim(p_login_id))
+    and s.course_id = '1142_CCI'
+  limit 1;
+$$;
+
+grant execute on function resolve_staff_login(text) to anon, authenticated;
 
 -- ============================================================================
 -- RPC 函式（security definer：以擁有者權限執行，繞過上面 RLS 的讀取限制，

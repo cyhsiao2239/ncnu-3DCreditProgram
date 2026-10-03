@@ -89,11 +89,30 @@ create table if not exists staff_members (
   unique (course_id, email)
 );
 
+alter table staff_members add column if not exists login_id text;
+create unique index if not exists staff_members_course_login_id_key
+  on staff_members (course_id, login_id)
+  where login_id is not null;
+
 alter table staff_members enable row level security;
 drop policy if exists "teacher manage staff_members" on staff_members;
 create policy "teacher manage staff_members" on staff_members for all
   using (auth.role() = 'authenticated')
   with check (auth.role() = 'authenticated');
+
+create or replace function resolve_staff_login(p_login_id text)
+returns table (email text)
+language sql security definer
+set search_path = public
+as $$
+  select s.email
+  from staff_members s
+  where lower(s.login_id) = lower(trim(p_login_id))
+    and s.course_id = '1142_CCI'
+  limit 1;
+$$;
+
+grant execute on function resolve_staff_login(text) to anon, authenticated;
 
 -- 確保查看分組名單會從目前期別的 students 回傳組員。
 create or replace function get_group_roster(p_term_id uuid)

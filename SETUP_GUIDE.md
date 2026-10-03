@@ -26,6 +26,15 @@
 
 > 之後要新增第三、第四位帳號（例如換學期、換助教），重複步驟 1–3 即可，不需要改程式碼。
 
+教師／TA 登入時，畫面輸入的是名冊中的「登入帳號」：
+
+- 教師：員工編號
+- TA：自己的學號
+
+這個登入帳號會在 `staff_members.login_id` 對應到 Supabase Authentication
+的 Email；密碼仍由 Supabase Authentication 驗證。Excel 中標示為教師／助教／admin
+的資料列，請提供 `登入帳號`、`電子郵件信箱`、`姓名` 與 `身分` 欄位。
+
 ## 第四步：拿到金鑰，填進網站
 
 1. 左側選單 **Settings** → **API**。
@@ -47,13 +56,15 @@ const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 
 - 允許學生先以「尚未分組」狀態匯入。
 - 建立教師／助教管理名單 `staff_members`。
+- 加入 `staff_members.login_id`，讓教師／TA 可使用員工編號／學號登入。
 - 加入學年度與期中／期末切換欄位。
 - 將舊版期別唯一鍵升級為「課程＋學年度＋期別」。
 
 這支檔案可以安全重跑；若畫面顯示 constraint 已存在，不需要再執行其他 SQL。
 匯入 Excel 中的 `admin` 資料會寫入 `staff_members`，但不會建立
 Supabase Authentication 帳號；每位教師／助教仍須先在 Authentication → Users
-建立相同 Email 的帳號，登入後即具有相同的管理權限。
+建立相同 Email 的帳號，並在名冊或 `staff_members.login_id` 設定對應的員工編號／學號，
+登入後即具有相同的管理權限。
 
 如果教師後台顯示已有小組，但學生端的分組卡片沒有組員，請重新執行這支
 整合 migration，讓 `get_group_roster` 查詢函式更新為目前版本。
