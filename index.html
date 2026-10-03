@@ -56,6 +56,7 @@
     </div>
     <nav class="relative z-30 mx-auto flex max-w-7xl flex-wrap gap-1 overflow-visible px-4 pb-3 sm:px-6">
       <button class="nav-btn active whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold" data-view="group-list-view">查看分組名單</button>
+      <button id="student-preview-nav" class="nav-btn hidden whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" type="button">學生預覽</button>
       <button class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" data-view="self-eval-view">小組自評</button>
       <button class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" data-view="voting-view">分組投票</button>
       <button class="nav-btn whitespace-nowrap rounded-xl px-4 py-2 text-sm font-bold text-muted" data-view="report-view">成果報告</button>
@@ -204,6 +205,7 @@ let teacherEntry = "admin";
 let teacherSession = null;
 let studentPreview = false;
 let studentPreviewEditing = false;
+let adminPreviewMode = false;
 let studentIdleTimer = null;
 
 function groupsGrouped(){
@@ -431,18 +433,18 @@ function renderGroups(){
     await loadGroupRoster(currentTerm.id);
     renderGroups(); renderReport(); refreshStudentProgress();
   });
-  if(teacherSession && currentTerm && !studentPreview){
+  if(teacherSession && currentTerm && !studentPreview && !adminPreviewMode){
     renderAdminRosterInGroupView();
   }
-  if(studentPreview){
+  if(studentPreview || adminPreviewMode){
     $("group-list-view").insertAdjacentHTML("afterbegin", `<div class="student-preview-banner mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sun/50 bg-sun/10 p-4">
-      <div><p class="text-sm font-black text-brand">學生視角預覽</p><p class="mt-1 text-xs text-muted">目前模擬：${esc(currentUser?.name || "")}（${esc(currentUser?.student_id || "")}）</p></div>
+      <div><p class="text-sm font-black text-brand">學生視角預覽</p><p class="mt-1 text-xs text-muted">${adminPreviewMode ? "管理者唯讀預覽，不會修改任何資料" : `目前模擬：${esc(currentUser?.name || "")}（${esc(currentUser?.student_id || "")}）`}</p></div>
       <div class="flex flex-wrap gap-2">
-        <button id="toggle-student-preview-edit" class="rounded-xl ${studentPreviewEditing ? "bg-brand text-white" : "border border-line bg-white text-brand"} px-3 py-2 text-xs font-bold hover:border-brand">${studentPreviewEditing ? "編修功能已啟用" : "啟用編修功能"}</button>
+        ${studentPreview ? `<button id="toggle-student-preview-edit" class="rounded-xl ${studentPreviewEditing ? "bg-brand text-white" : "border border-line bg-white text-brand"} px-3 py-2 text-xs font-bold hover:border-brand">${studentPreviewEditing ? "編修功能已啟用" : "啟用編修功能"}</button>` : ""}
         <button id="exit-student-preview" class="rounded-xl border border-line bg-white px-3 py-2 text-xs font-bold text-brand hover:border-brand">結束預覽</button>
       </div>
     </div>`);
-    $("toggle-student-preview-edit").onclick = () => {
+    if(studentPreview) $("toggle-student-preview-edit").onclick = () => {
       studentPreviewEditing = !studentPreviewEditing;
       renderGroups();
       renderEval();
@@ -467,6 +469,10 @@ async function renderAdminRosterInGroupView(){
    小組自評
 --------------------------------------------------------------------------- */
 async function renderEval(){
+  if(adminPreviewMode){
+    $("eval-container").innerHTML = `<div class="rounded-3xl border border-line bg-white p-8 text-center shadow-soft"><h4 class="text-xl font-black">學生預覽模式</h4><p class="mt-2 text-sm leading-6 text-muted">這是管理者的唯讀預覽，不會載入或送出任何學生自評資料。</p></div>`;
+    return;
+  }
   if(!hasGroupAssignment()){
     $("eval-container").innerHTML = `<div class="rounded-3xl border border-sun/40 bg-sun/10 p-8 text-center shadow-soft"><h4 class="text-xl font-black">尚未完成分組</h4><p class="mt-2 text-sm leading-6 text-muted">完成分組後，老師更新名冊，你就可以進行小組自評。</p></div>`;
     return;
@@ -523,6 +529,10 @@ function renderEvalFormWithIds(members, existing){
    分組投票
 --------------------------------------------------------------------------- */
 async function renderVoting(){
+  if(adminPreviewMode){
+    $("voting-container").innerHTML = `<div class="rounded-3xl border border-line bg-white p-8 text-center shadow-soft"><h4 class="text-xl font-black">學生預覽模式</h4><p class="mt-2 text-sm leading-6 text-muted">這是管理者的唯讀預覽，不會載入或送出任何學生投票資料。</p></div>`;
+    return;
+  }
   if(!hasGroupAssignment()){
     $("voting-container").innerHTML = `<div class="rounded-3xl border border-sun/40 bg-sun/10 p-8 text-center shadow-soft"><h4 class="text-xl font-black">尚未完成分組</h4><p class="mt-2 text-sm leading-6 text-muted">完成分組後，老師更新名冊，你就可以進行分組投票。</p></div>`;
     return;
@@ -605,6 +615,10 @@ async function renderReport(){
    分頁切換
 --------------------------------------------------------------------------- */
 function openView(id){
+  if(adminPreviewMode && id !== "group-list-view" && id !== "report-view"){
+    id = "group-list-view";
+    toast("學生預覽目前提供唯讀的分組名單畫面");
+  }
   document.querySelectorAll(".view").forEach(v=>v.classList.toggle("active", v.id===id));
   document.querySelectorAll(".nav-btn[data-view]").forEach(b=>b.classList.toggle("active", b.dataset.view===id));
   if(id==="self-eval-view") renderEval();
@@ -612,6 +626,7 @@ function openView(id){
   if(id==="report-view") renderReport();
 }
 document.querySelectorAll(".nav-btn[data-view]").forEach(b=>b.onclick=()=>openView(b.dataset.view));
+$("student-preview-nav").onclick = () => startAdminStudentPreview();
 
 /* ---------------------------------------------------------------------------
    教師專用：登入（Supabase Auth）
@@ -639,6 +654,8 @@ $("admin-form").onsubmit = async e => {
 $("teacher-logout-btn").onclick = async () => {
   await sb.auth.signOut();
   teacherSession=null;
+  adminPreviewMode = false;
+  $("student-preview-nav").classList.add("hidden");
   $("teacher-logout-btn").classList.add("hidden");
   renderGroups();
   toast("教師已登出");
@@ -652,13 +669,26 @@ async function enterTeacherArea(){
   else {
     $("admin-whoami").textContent = whoami;
     $("admin-panel").classList.remove("hidden");
+    $("student-preview-nav").classList.remove("hidden");
     await renderTeacherControls();
     await renderAdmin();
-    renderGroups();
+    await refreshTeacherGroupView();
   }
 }
 $("admin-close").onclick = () => $("admin-panel").classList.add("hidden");
 $("course-import-close").onclick = () => $("course-import-panel").classList.add("hidden");
+
+async function refreshTeacherGroupView(){
+  const term = await fetchTermByKey(viewingTermKey, viewingAcademicYear);
+  currentTerm = term || null;
+  if(currentTerm){
+    groupRosterCache.delete(currentTerm.id);
+    await loadGroupRoster(currentTerm.id);
+  } else {
+    groupRoster = [];
+  }
+  renderGroups();
+}
 
 /* ---------------------------------------------------------------------------
    教師：期別切換 / 刪除資料（滑桿防呆，兩段式）
@@ -696,8 +726,16 @@ async function renderTeacherControls(){
       </div></div>`;
   $("teacher-controls").innerHTML = ""; $("teacher-controls").appendChild(panel);
 
-  $("view-year").onchange = async e => { viewingAcademicYear = e.target.value; await renderAdmin(); };
-  $("view-term").onchange = async e => { viewingTermKey = e.target.value; await renderAdmin(); };
+  $("view-year").onchange = async e => {
+    viewingAcademicYear = e.target.value;
+    await renderAdmin();
+    await refreshTeacherGroupView();
+  };
+  $("view-term").onchange = async e => {
+    viewingTermKey = e.target.value;
+    await renderAdmin();
+    await refreshTeacherGroupView();
+  };
   $("active-year").onchange = async e => {
     const { error } = await sb.from("course_settings").upsert({ course_id: COURSE_ID, active_academic_year: e.target.value, active_term_key: activeTermKey, updated_at: new Date().toISOString() });
     if(error){ toast("切換學年度失敗："+error.message); return; }
@@ -828,27 +866,29 @@ function renderAdminRoster(students, groups, targetId = "admin-content"){
         ).join("")}</div>
       </div>` : ""}
       <div class="mt-5 border-t border-line pt-5">
-        <p class="text-sm font-black text-brand">學生視角預覽</p>
-        <p class="mt-1 text-xs text-muted">選擇名單中的學生，預覽同學看到的畫面；不會修改資料。</p>
-        <div class="mt-3 flex flex-wrap gap-2">
-          <select id="student-preview-select" class="min-w-56 rounded-xl border border-line bg-white px-3 py-2 text-sm">
-            <option value="">請選擇學生</option>
-            ${students.map(student => `<option value="${esc(student.student_id)}">${esc(student.name)}（${esc(student.student_id)}）</option>`).join("")}
-          </select>
-          <button id="student-preview-start" class="rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-dark">開始預覽</button>
-        </div>
+        <p class="text-sm font-black text-brand">管理者學生預覽</p>
+        <p class="mt-1 text-xs text-muted">以管理者身分查看學生會看到的分組名單畫面，不需要選擇學生，也不會修改任何資料。</p>
+        <button id="student-preview-start" class="mt-3 rounded-xl bg-brand px-4 py-2 text-sm font-bold text-white hover:bg-brand-dark">開啟學生預覽</button>
       </div>
     </section>`);
-  $("student-preview-start").onclick = () => {
-    const student = students.find(item => item.student_id === $("student-preview-select").value);
-    if(!student){ toast("請先選擇學生"); return; }
-    startStudentPreview(student);
-  };
+  $("student-preview-start").onclick = () => startAdminStudentPreview();
+}
+
+function startAdminStudentPreview(){
+  adminPreviewMode = true;
+  studentPreview = false;
+  studentPreviewEditing = false;
+  $("admin-panel").classList.add("hidden");
+  $("student-preview-nav").classList.remove("hidden");
+  openView("group-list-view");
+  renderGroups();
+  toast("已開啟管理者學生預覽（唯讀）");
 }
 
 function startStudentPreview(student){
   studentPreview = true;
   studentPreviewEditing = false;
+  adminPreviewMode = false;
   currentUser = { ...student };
   renderGroups();
   refreshStudentProgress();
@@ -857,9 +897,15 @@ function startStudentPreview(student){
 function exitStudentPreview(){
   studentPreview = false;
   studentPreviewEditing = false;
+  adminPreviewMode = false;
   currentUser = null;
   $("student-progress").classList.add("hidden");
+  if(teacherSession){
+    $("admin-panel").classList.remove("hidden");
+    renderAdmin();
+  }
   renderGroups();
+  if(teacherSession) $("student-preview-nav").classList.remove("hidden");
   toast("已結束學生視角預覽");
 }
 
