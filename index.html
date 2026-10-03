@@ -64,7 +64,6 @@
         <div id="teacher-menu" class="absolute left-0 top-full z-40 mt-2 hidden min-w-48 rounded-2xl border border-line bg-white p-2 shadow-soft">
           <button id="admin-btn" class="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-muted hover:bg-canvas hover:text-brand">教材編輯區</button>
           <button id="course-import-btn" class="w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-muted hover:bg-canvas hover:text-brand">課程資料匯入</button>
-          <button id="teacher-logout-btn" class="hidden w-full rounded-xl px-4 py-3 text-left text-sm font-bold text-red-600 hover:bg-red-50">教師登出</button>
         </div>
       </div>
     </nav>
@@ -373,7 +372,14 @@ $("login-form").onsubmit = async e => {
   localStorage.setItem("cci-current-user", JSON.stringify(currentUser));
   afterLogin();
 };
-$("logout-btn").onclick = () => { clearStudentSession(); location.reload(); };
+$("logout-btn").onclick = async () => {
+  if(teacherSession){
+    await sb.auth.signOut();
+    teacherSession = null;
+  }
+  clearStudentSession();
+  location.reload();
+};
 
 ["pointerdown", "keydown", "touchstart", "scroll"].forEach(eventName => {
   window.addEventListener(eventName, markStudentActivity, { passive: true });
@@ -618,20 +624,14 @@ $("admin-form").onsubmit = async e => {
   if(error){ $("admin-error").textContent = "登入失敗："+error.message; $("admin-error").classList.remove("hidden"); return; }
   teacherSession = data.session;
   $("admin-modal").classList.add("hidden"); $("admin-password").value="";
-  $("teacher-logout-btn").classList.remove("hidden");
   enterTeacherArea();
-};
-$("teacher-logout-btn").onclick = async () => {
-  await sb.auth.signOut();
-  teacherSession=null;
-  $("teacher-logout-btn").classList.add("hidden");
-  renderGroups();
-  toast("教師已登出");
 };
 async function enterTeacherArea(){
   currentUser = null;
   clearStudentSession();
-  $("user-chip").classList.add("hidden");
+  $("user-chip").classList.remove("hidden");
+  $("user-label").textContent = "管理者";
+  $("user-dept").textContent = teacherSession?.user?.email || "教師／TA";
   $("student-progress").classList.add("hidden");
   $("login-modal").classList.add("hidden");
   viewingTermKey = activeTermKey;
@@ -1122,7 +1122,6 @@ $("print-btn").onclick = exportPdf;
   if(session){
     teacherSession = session;
     teacherEntry = "admin";
-    $("teacher-logout-btn").classList.remove("hidden");
   }
   await tryRestoreSession();
   if(teacherSession){
