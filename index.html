@@ -199,6 +199,7 @@ let viewingAcademicYear = DEFAULT_ACADEMIC_YEAR;
 let currentTerm = null;            // { id, course_id, course_name, term_key }
 let currentUser = JSON.parse(localStorage.getItem("cci-current-user") || "null"); // 僅裝置端便利快取
 let groupRoster = [];              // [{group_no,name,topic,member_name}]
+const groupRosterCache = new Map();
 let teacherEntry = "admin";
 let teacherSession = null;
 let studentPreview = false;
@@ -279,6 +280,10 @@ async function fetchTermByKey(termKey, academicYear = activeAcademicYear){
   return data;
 }
 async function loadGroupRoster(termId){
+  if(groupRosterCache.has(termId)){
+    groupRoster = groupRosterCache.get(termId);
+    return;
+  }
   const { data, error } = await sb.rpc("get_public_group_roster", { p_term_id: termId });
   if(error){
     console.error("get_group_roster failed:", error);
@@ -292,6 +297,7 @@ async function loadGroupRoster(termId){
       ? members.map(member_name => ({ group_no:row.group_no, name:row.name, topic:row.topic, member_name }))
       : [{ group_no:row.group_no, name:row.name, topic:row.topic, member_name:null }];
   });
+  groupRosterCache.set(termId, groupRoster);
   if(currentUser) renderGroups();
 }
 function normaliseMemberArray(value){
@@ -309,12 +315,14 @@ function normaliseMemberArray(value){
 }
 async function refreshCurrentTermData(){
   currentTerm = await fetchTermByKey(activeTermKey, activeAcademicYear);
-  if(currentTerm){ await loadGroupRoster(currentTerm.id); }
+  if(currentTerm){
+    await Promise.all([loadGroupRoster(currentTerm.id), refreshVoteCountStat()]);
+  }
   $("current-term-label").textContent = currentTerm
     ? `${activeAcademicYear}｜${COURSE_NAME}｜${activeTermKey==="midterm"?"期中":"期末"}`
     : `${COURSE_NAME}｜本期尚未匯入名冊`;
   $("stat-groups").textContent = currentTerm ? groupsGrouped().length : "0";
-  await refreshVoteCountStat();
+  if(!currentTerm) await refreshVoteCountStat();
 }
 async function refreshVoteCountStat(){
   if(!currentTerm){ $("stat-votes").textContent="0"; return; }
@@ -419,6 +427,7 @@ function renderGroups(){
     const { error } = await sb.rpc("update_group_topic", { p_term_id: currentTerm.id, p_group_no: groupNo, p_student_id: currentUser.student_id, p_topic: topic });
     if(error){ toast("更新失敗："+error.message); return; }
     toast("報告主題已更新");
+    groupRosterCache.delete(currentTerm.id);
     await loadGroupRoster(currentTerm.id);
     renderGroups(); renderReport(); refreshStudentProgress();
   });
@@ -883,6 +892,7 @@ function renderAdminGrouping(term, students, groups, targetId = "admin-content")
       toast(`已套用分組：${assignments.filter(a=>a.groupNo !== null).length} 位學生，${assignments.filter(a=>a.groupNo === null).length} 位待分組`);
       await renderAdmin();
       if(targetId === "group-list-view"){
+        groupRosterCache.delete(term.id);
         await loadGroupRoster(term.id);
         renderGroups();
       }
