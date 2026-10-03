@@ -20,15 +20,14 @@ where term_id in (
     and term_key in ('midterm', 'final')
 );
 
-update groups
+update groups g
 set topic = '尚未設定小組主題',
     topic_updated_at = null
-where term_id in (
-  select id from terms
-  where course_id = '1142_CCI'
-    and academic_year = '1151'
-    and term_key in ('midterm', 'final')
-);
+from terms t
+where g.term_id = t.id
+  and t.course_id = '1142_CCI'
+  and t.academic_year = '1151'
+  and t.term_key in ('midterm', 'final');
 
 commit;
 
@@ -37,7 +36,10 @@ select
   t.academic_year,
   t.term_key,
   (select count(*) from evaluations e where e.term_id = t.id) as evaluation_count,
-  (select count(*) from votes v where v.term_id = t.id) as vote_count
+  (select count(*) from votes v where v.term_id = t.id) as vote_count,
+  (select count(*) from groups g
+   where g.term_id = t.id
+     and g.topic <> '尚未設定小組主題') as custom_topic_count
 from terms t
 where t.course_id = '1142_CCI'
   and t.academic_year = '1151'
