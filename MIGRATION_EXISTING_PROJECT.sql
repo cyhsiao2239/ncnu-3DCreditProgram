@@ -108,7 +108,10 @@ as $$
   select s.email
   from staff_members s
   where lower(s.login_id) = lower(trim(p_login_id))
-    and s.course_id = '1142_CCI'
+     or (
+       lower(s.course_id) = lower(trim(p_login_id))
+       and s.course_id <> '1142_CCI'
+     )
   limit 1;
 $$;
 

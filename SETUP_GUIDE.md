@@ -32,7 +32,8 @@
 - TA：自己的學號
 
 這個登入帳號會在 `staff_members.login_id` 對應到 Supabase Authentication
-的 Email；密碼仍由 Supabase Authentication 驗證。Excel 中標示為教師／助教／admin
+的 Email；目前也相容直接將個別管理者的 `staff_members.course_id` 設為員工編號／學號。
+密碼仍由 Supabase Authentication 驗證。Excel 中標示為教師／助教／admin
 的資料列，請提供 `登入帳號`、`電子郵件信箱`、`姓名` 與 `身分` 欄位。
 
 ## 第四步：拿到金鑰，填進網站
