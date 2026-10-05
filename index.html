@@ -8,8 +8,6 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script>
   tailwind.config = {
     theme: { extend: {
@@ -149,7 +147,7 @@
 <div id="admin-panel" class="fixed inset-0 z-40 hidden overflow-y-auto bg-canvas">
   <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6">
     <div class="mb-8 flex flex-wrap items-center justify-between gap-3"><div><p class="text-sm font-bold text-brand">CONTROL ROOM</p><h2 class="text-3xl font-black">管理者活動中控台</h2><p id="admin-whoami" class="mt-1 text-xs text-muted"></p></div>
-      <div class="flex gap-3"><button id="print-btn" class="rounded-xl bg-sun px-4 py-3 text-sm font-black text-ink hover:brightness-95">下載成果報告 PDF</button><button id="admin-close" class="rounded-xl border border-line bg-white px-4 py-3 text-sm font-bold text-muted">關閉</button></div>
+      <div class="flex gap-3"><button id="print-btn" class="rounded-xl bg-sun px-4 py-3 text-sm font-black text-ink hover:brightness-95">下載成果報告 Word</button><button id="admin-close" class="rounded-xl border border-line bg-white px-4 py-3 text-sm font-bold text-muted">關閉</button></div>
     </div>
     <div id="teacher-controls"></div>
     <div id="admin-content"></div>
@@ -1109,43 +1107,57 @@ async function syncStaffMembers(staffRows){
 async function exportPdf(){
   if(!lastAdminData){ toast("請先在教材編輯區載入資料"); return; }
   const { students, groups, evaluations, votes } = lastAdminData;
-  const nameOf = sid => students.find(s=>s.student_id===sid)?.name || sid;
-  const groupNameOf = gn => groups.find(g=>g.group_no===gn)?.name || `第${gn}組`;
   const voteTotals = {}; for(const g of groups) voteTotals[g.group_no]=0;
   for(const v of votes) for(const gn of v.selected_groups) voteTotals[gn]=(voteTotals[gn]||0)+1;
-  const ranked = [...groups].sort((a,b)=>(voteTotals[b.group_no]||0)-(voteTotals[a.group_no]||0));
-  const maxVote = Math.max(1, ...ranked.map(g=>voteTotals[g.group_no]||0));
-  const feedbackRows = votes.filter(v=>v.feedback && v.feedback.trim()).map((v,i)=>`<tr><td>匿名回饋 ${i+1}</td><td>${esc(v.feedback)}</td></tr>`).join("") || '<tr><td colspan="2">目前尚無投票後回饋</td></tr>';
-  const evalRows = students.map(s => {
-    const e = evaluations.find(ev=>ev.evaluator_id===s.student_id);
-    const vals = e ? Object.values(e.scores).map(Number) : [];
-    const avg = vals.length ? (vals.reduce((a,b)=>a+b,0)/vals.length).toFixed(1) : "—";
-    return `<tr><td>${esc(s.name)}</td><td>${esc(groupNameOf(s.group_no))}</td><td>${e?'已完成':'未填寫'}</td><td>${avg}</td><td>${e?esc(e.feedback||'未留下質性回饋'):'—'}</td></tr>`;
-  }).join("");
+  const ranked = [...groups].sort((a,b)=>(voteTotals[b.group_no]||0)-(voteTotals[a.group_no]||0) || a.group_no-b.group_no);
+  const feedbackRows = votes.filter(v=>v.feedback && v.feedback.trim()).map((v,i)=>`<tr><td style="padding:7px;border:1px solid #D9E2E6;vertical-align:top">匿名回饋 ${i+1}</td><td style="padding:7px;border:1px solid #D9E2E6;line-height:1.55">${esc(v.feedback)}</td></tr>`).join("") || '<tr><td colspan="2" style="padding:7px;border:1px solid #D9E2E6">目前尚無投票後回饋</td></tr>';
+  const groupStudents = groupNo => students.filter(student=>student.group_no===groupNo);
+  const evaluationByStudent = new Map(evaluations.map(evaluation=>[evaluation.evaluator_id, evaluation]));
+  const evaluationSections = [...groups].sort((a,b)=>a.group_no-b.group_no).map(group => {
+    const members = groupStudents(group.group_no);
+    const memberHeaders = members.map(member=>`<th style="padding:6px 4px;border:1px solid #D9E2E6;text-align:center;white-space:nowrap">${esc(member.name)}</th>`).join("");
+    const rows = members.map(evaluator => {
+      const evaluation = evaluationByStudent.get(evaluator.student_id);
+      const scores = evaluation?.scores || {};
+      const scoreCells = members.map(member => `<td style="padding:6px 4px;border:1px solid #D9E2E6;text-align:center">${scores[member.student_id] === undefined ? "—" : esc(String(scores[member.student_id]))}</td>`).join("");
+      const values = Object.values(scores).map(Number).filter(Number.isFinite);
+      const average = values.length ? (values.reduce((sum,value)=>sum+value,0)/values.length).toFixed(1) : "—";
+      return `<tr><td style="padding:6px;border:1px solid #D9E2E6;font-weight:700;white-space:nowrap">${esc(evaluator.name)}</td>${scoreCells}<td style="padding:6px;border:1px solid #D9E2E6;text-align:center;font-weight:700">${average}</td><td style="padding:6px;border:1px solid #D9E2E6;line-height:1.45">${evaluation ? esc(evaluation.feedback || "—") : "未填寫"}</td></tr>`;
+    }).join("") || `<tr><td colspan="${members.length+3}" style="padding:7px;border:1px solid #D9E2E6">目前尚無學生資料</td></tr>`;
+    return `<section style="page-break-inside:avoid;margin:0 0 22px"><div style="display:flex;justify-content:space-between;align-items:end;border-bottom:2px solid #416D85;padding-bottom:5px;margin-bottom:7px"><h3 style="margin:0;color:#416D85;font-size:17px">${esc(group.name)}</h3><span style="font-size:11px;color:#687070">主題：${esc(group.topic || "尚未設定小組主題")}</span></div><table style="width:100%;border-collapse:collapse;font-size:10px;table-layout:auto"><thead><tr style="background:#EAF1F4"><th style="padding:6px;border:1px solid #D9E2E6;text-align:left;white-space:nowrap">姓名／評分</th>${memberHeaders}<th style="padding:6px 4px;border:1px solid #D9E2E6;white-space:nowrap">平均</th><th style="padding:6px;border:1px solid #D9E2E6;text-align:left;min-width:180px">建議與回饋</th></tr></thead><tbody>${rows}</tbody></table></section>`;
+  }).join("") || '<p style="color:#687070">目前尚無分組資料。</p>';
   const report = $("print-report");
-  report.style.cssText = "position:fixed;left:-10000px;top:0;width:794px;padding:48px;background:#fff;color:#2E3131;font-family:Arial,'Noto Sans TC',sans-serif;z-index:-1;";
-  report.innerHTML = `<div style="border-bottom:4px solid #416D85;padding-bottom:18px"><div style="font-size:14px;color:#416D85;font-weight:700;letter-spacing:2px">CLASSROOM HUB / REPORT</div>
-    <h1 style="font-size:30px;margin:12px 0 6px">${esc(COURSE_NAME)}｜成果報告（${viewingTermKey==="midterm"?"期中":"期末"}）</h1><p style="color:#687070;margin:0">產出時間：${new Date().toLocaleString("zh-TW")}</p></div>
-    <h2 style="font-size:20px;margin:30px 0 12px;color:#416D85">一、分組投票統計與排名</h2>
-    <div>${ranked.map((g,i)=>`<div style="margin:12px 0"><div style="display:flex;justify-content:space-between;font-weight:700"><span>${i+1}. ${esc(g.name)}｜${esc(g.topic)}</span><span>${voteTotals[g.group_no]||0} 票</span></div>
-      <div style="height:12px;background:#F6F0E3;border-radius:8px;margin-top:6px"><div style="height:12px;width:${(voteTotals[g.group_no]||0)/maxVote*100}%;background:${i===0?'#F8B831':'#416D85'};border-radius:8px"></div></div></div>`).join("")}</div>
-    <h2 style="font-size:20px;margin:30px 0 12px;color:#416D85">二、投票後匿名回饋</h2><p style="font-size:12px;color:#687070">本區不顯示姓名、系級或組別，以保護同學隱私。</p>
-    <table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:#EAF1F4"><th style="padding:8px;text-align:left">匿名識別</th><th style="padding:8px;text-align:left">回饋內容</th></tr></thead><tbody>${feedbackRows}</tbody></table>
-    <h2 style="font-size:20px;margin:30px 0 12px;color:#416D85">三、組內自評與質性回饋摘要</h2>
-    <table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#EAF1F4"><th style="padding:7px;text-align:left">姓名</th><th style="padding:7px;text-align:left">組別</th><th style="padding:7px;text-align:left">狀態</th><th style="padding:7px;text-align:left">平均</th><th style="padding:7px;text-align:left">回饋</th></tr></thead><tbody>${evalRows}</tbody></table>`;
-  try {
-    const canvas = await html2canvas(report, { scale:2, backgroundColor:"#ffffff", useCORS:true });
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation:"portrait", unit:"mm", format:"a4" });
-    const pageWidth=210, pageHeight=297, margin=10, imageWidth=pageWidth-margin*2, imageHeight=canvas.height*imageWidth/canvas.width;
-    let remaining=imageHeight, offset=0;
-    pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin,imageWidth,imageHeight);
-    remaining -= pageHeight-margin*2;
-    while(remaining>0){ offset += pageHeight-margin*2; pdf.addPage(); pdf.addImage(canvas.toDataURL("image/jpeg",0.95),"JPEG",margin,margin-offset,imageWidth,imageHeight); remaining -= pageHeight-margin*2; }
-    pdf.save(`${COURSE_NAME}_成果報告_${new Date().toISOString().slice(0,10)}.pdf`);
-    toast("成果報告 PDF 已下載");
-  } catch(err){ console.error(err); toast("PDF 匯出失敗，請確認網路可載入 PDF 套件"); }
-  finally { report.innerHTML=""; report.removeAttribute("style"); }
+  report.innerHTML = `<div style="border-bottom:4px solid #416D85;padding-bottom:15px"><div style="font-size:13px;color:#416D85;font-weight:700;letter-spacing:2px">CLASSROOM HUB / REPORT</div>
+    <h1 style="font-size:28px;margin:10px 0 5px">${esc(COURSE_NAME)}｜成果報告（${viewingTermKey==="midterm"?"期中":"期末"}）</h1><p style="color:#687070;margin:0;font-size:11px">產出時間：${new Date().toLocaleString("zh-TW")}</p></div>
+    <h2 style="font-size:20px;margin:25px 0 10px;color:#416D85">一、組內自評表</h2><p style="font-size:11px;color:#687070;margin:0 0 14px">直列為填寫自評的同學，橫列為該組成員得到的分數；「平均」為該位同學給出的組內平均分數。</p>${evaluationSections}
+    <h2 style="font-size:20px;margin:28px 0 10px;color:#416D85">二、小組票選</h2>
+    <table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#EAF1F4"><th style="padding:7px;border:1px solid #D9E2E6;text-align:center">排名</th><th style="padding:7px;border:1px solid #D9E2E6;text-align:left">組別</th><th style="padding:7px;border:1px solid #D9E2E6;text-align:left">主題</th><th style="padding:7px;border:1px solid #D9E2E6;text-align:center">票數</th></tr></thead><tbody>${ranked.map((group,index)=>`<tr><td style="padding:7px;border:1px solid #D9E2E6;text-align:center;font-weight:700">${index+1}</td><td style="padding:7px;border:1px solid #D9E2E6">${esc(group.name)}</td><td style="padding:7px;border:1px solid #D9E2E6">${esc(group.topic || "尚未設定小組主題")}</td><td style="padding:7px;border:1px solid #D9E2E6;text-align:center;font-weight:700">${voteTotals[group.group_no]||0}</td></tr>`).join("") || '<tr><td colspan="4" style="padding:7px;border:1px solid #D9E2E6">目前尚無分組資料。</td></tr>'}</tbody></table>
+    <h2 style="font-size:20px;margin:28px 0 10px;color:#416D85">三、票選回饋</h2><p style="font-size:11px;color:#687070">本區不顯示姓名、學號或組別，以保護同學隱私。</p>
+    <table style="width:100%;border-collapse:collapse;font-size:11px"><thead><tr style="background:#EAF1F4"><th style="padding:7px;border:1px solid #D9E2E6;text-align:left">匿名識別</th><th style="padding:7px;border:1px solid #D9E2E6;text-align:left">回饋內容</th></tr></thead><tbody>${feedbackRows}</tbody></table>`;
+  const reportTitle = `${COURSE_NAME}_成果報告_${new Date().toISOString().slice(0,10)}`;
+  const documentHtml = `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="ProgId" content="Word.Document"><title>${esc(reportTitle)}</title><style>
+    @page { size: A4 landscape; margin: 10mm; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff; color: #2E3131; }
+    body { font-family: Arial, "Noto Sans TC", "Microsoft JhengHei", sans-serif; font-size: 11px; }
+    h1, h2, h3, p { break-after: avoid; }
+    section { break-inside: avoid; page-break-inside: avoid; }
+    table { break-inside: auto; page-break-inside: auto; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
+    td, th { overflow-wrap: anywhere; }
+  </style></head><body>${report.innerHTML}</body></html>`;
+  report.innerHTML = "";
+  const blob = new Blob([documentHtml], { type:"application/msword;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${reportTitle}.doc`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  toast("成果報告 Word 檔已下載，可用 Word 開啟並複製文字");
 }
 $("print-btn").onclick = exportPdf;
 

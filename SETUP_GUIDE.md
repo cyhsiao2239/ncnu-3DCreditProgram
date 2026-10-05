@@ -84,6 +84,12 @@ Supabase Authentication 帳號；每位教師／助教仍須先在 Authenticatio
    （欄位：學號、姓名、系級、組別、身分）。
 4. 匯入成功後，登出教師，重新整理頁面，用其中一位學生的學號＋姓名登入測試分組名單、自評、投票是否正常。
 
+### 匯出可複製文字的成果報告
+
+管理者中控台的「下載成果報告 Word」會直接下載 `.doc` 檔案，不會開啟列印視窗。
+這是 Word 相容的 HTML 文件，使用 Microsoft Word 開啟後可以選取、複製與編輯表格及文字。
+若需要 PDF，可在 Word 開啟檔案後另存為 PDF。
+
 ## 第六步：放到 GitHub Pages 讓全班連上線
 
 1. 到 https://github.com ，建立一個新的 **Public** repository（例如 `ncnu-3DCreditProgram`）。
