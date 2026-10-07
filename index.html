@@ -840,6 +840,11 @@ async function renderAdmin(){
     const members = (students||[]).filter(student => Number(student.group_no) === Number(group.group_no));
     return `<article class="rounded-2xl border border-line bg-canvas p-4"><div class="flex flex-wrap items-center justify-between gap-2"><div><h4 class="font-black text-brand">${esc(group.name)}</h4><p class="mt-1 text-xs text-muted">主題：${esc(group.topic || "尚未設定小組主題")}</p></div><span class="text-lg font-black text-brand">${groupVotes.length} 票</span></div><div class="mt-3 flex flex-wrap gap-2">${members.map(member=>`<span class="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold text-muted">${esc(member.name)}</span>`).join("") || '<span class="text-xs text-muted">目前沒有組員</span>'}</div><p class="mt-3 text-xs leading-5 text-muted">${voters ? `投票同學：${esc(voters)}` : "目前尚無同學投票給此組"}</p></article>`;
   }).join("") || '<p class="text-sm text-muted">目前尚無小組資料。</p>';
+  const resetPanel = `<section class="mt-5 rounded-3xl border border-red-200 bg-red-50 p-6 shadow-soft"><p class="text-sm font-bold text-red-700">TEST RESET</p><h3 class="mt-1 text-xl font-black text-red-800">管理者測試資料還原</h3><p class="mt-2 text-sm leading-6 text-red-700">目前檢視：${esc(viewingAcademicYear)} 學年度・${viewingTermKey==="midterm"?"期中":"期末"}。每個按鈕只執行對應的還原，不會刪除學生名冊或分組資料。</p><div class="mt-5 flex flex-wrap gap-3">
+    <button id="reset-topics-btn" type="button" class="rounded-xl border border-red-300 bg-white px-4 py-3 text-sm font-black text-red-700 hover:bg-red-100">還原報告主題</button>
+    <button id="reset-evaluations-btn" type="button" class="rounded-xl border border-red-300 bg-white px-4 py-3 text-sm font-black text-red-700 hover:bg-red-100">還原小組自評</button>
+    <button id="reset-votes-btn" type="button" class="rounded-xl bg-red-600 px-4 py-3 text-sm font-black text-white hover:bg-red-700">還原分組投票</button>
+  </div><p class="mt-3 text-xs text-red-600">這些操作無法復原，適合管理者使用學生帳號測試前清除測試結果。</p></section>`;
 
   $("admin-content").innerHTML = `
     <div class="grid gap-5 lg:grid-cols-[.9fr_1.1fr]">
@@ -857,6 +862,7 @@ async function renderAdmin(){
         <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[420px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">組別</th><th class="px-3 py-3">票數</th><th class="px-3 py-3">狀態</th></tr></thead><tbody>${voteGroupRows}</tbody></table></div></section>
     </div>
     <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">TOPIC MANAGEMENT</p><h3 class="mt-1 text-xl font-black">管理者協助設定小組主題</h3><p class="mt-2 text-sm text-muted">可直接替忘記修改的組別更新報告主題，儲存後學生端會立即同步。</p><div class="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-3">${adminTopicCards}</div></section>
+    ${resetPanel}
     <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">GROUP SELF-EVALUATION</p><h3 class="mt-1 text-xl font-black">各組小組自評明細</h3><p class="mt-2 text-sm text-muted">依組別列出同學看到的組員評分與回饋；管理者不限定某一組。</p><div class="mt-5 grid gap-4 lg:grid-cols-2">${adminEvalCards}</div></section>
     <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">GROUP VOTING</p><h3 class="mt-1 text-xl font-black">各組分組投票明細</h3><p class="mt-2 text-sm text-muted">依組別列出小組成員、票數與投票同學。</p><div class="mt-5 grid gap-4 lg:grid-cols-2">${adminVoteCards}</div></section>
     <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">VOTE RECORDS</p><h3 class="mt-1 text-xl font-black">分組投票紀錄與時間</h3>
@@ -876,6 +882,19 @@ async function renderAdmin(){
     await renderAdmin();
     await refreshTeacherGroupView();
   });
+  const resetTermData = async (kind, label, confirmText) => {
+    if(!confirm(`確定要${confirmText}嗎？\n目前範圍：${viewingAcademicYear} ${viewingTermKey==="midterm"?"期中":"期末"}\n此操作無法復原。`)) return;
+    const { error } = kind === "topics"
+      ? await sb.from("groups").update({ topic:"尚未設定小組主題", topic_updated_at:null }).eq("term_id", term.id)
+      : await sb.from(kind).delete().eq("term_id", term.id);
+    if(error){ toast(`${label}失敗：${error.message}`); return; }
+    toast(`${label}完成`);
+    await renderAdmin();
+    await refreshTeacherGroupView();
+  };
+  $("reset-topics-btn").onclick = () => resetTermData("topics", "報告主題還原", "還原所有小組報告主題");
+  $("reset-evaluations-btn").onclick = () => resetTermData("evaluations", "小組自評還原", "清除目前期別所有小組自評");
+  $("reset-votes-btn").onclick = () => resetTermData("votes", "分組投票還原", "清除目前期別所有分組投票");
 }
 
 function renderAdminRoster(students, groups, targetId = "admin-content"){
