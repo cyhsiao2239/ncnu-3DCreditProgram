@@ -819,6 +819,27 @@ async function renderAdmin(){
     return `<tr class="border-b border-line last:border-0"><td class="px-3 py-3 font-bold">${esc(group.name)}</td>
       <td class="px-3 py-3 font-black text-brand">${selected} 票</td><td class="px-3 py-3 text-muted">${selected ? "已有投票" : "尚無投票"}</td></tr>`;
   }).join("") || '<tr><td colspan="3" class="px-3 py-3 text-muted">目前尚無小組資料</td></tr>';
+  const adminTopicCards = (groups||[]).map(group => `<article class="rounded-2xl border border-line bg-canvas p-4">
+    <div class="flex items-center justify-between gap-3"><h4 class="font-black text-brand">${esc(group.name)}</h4><span class="text-xs text-muted">第 ${group.group_no} 組</span></div>
+    <div class="mt-3 flex gap-2"><input data-admin-topic-input="${group.id}" value="${esc(group.topic || "尚未設定小組主題")}" class="min-w-0 flex-1 rounded-xl border border-line bg-white px-3 py-2 text-sm outline-none focus:border-brand">
+    <button type="button" data-admin-topic-save="${group.id}" class="rounded-xl bg-brand px-3 py-2 text-xs font-bold text-white hover:bg-brand-dark">儲存</button></div>
+    </article>`).join("") || '<p class="text-sm text-muted">目前尚無小組資料。</p>';
+  const adminEvalCards = (groups||[]).map(group => {
+    const members = (students||[]).filter(student => Number(student.group_no) === Number(group.group_no));
+    const rows = members.map(member => {
+      const evaluation = (evaluations||[]).find(item => item.evaluator_id === member.student_id);
+      const scores = evaluation?.scores || {};
+      const details = members.map(target => `${esc(target.name)}：${scores[target.student_id] === undefined ? "—" : `${scores[target.student_id]} 分`}`).join("、");
+      return `<div class="rounded-xl border border-line bg-white p-3"><div class="flex flex-wrap items-center justify-between gap-2"><span class="font-bold">${esc(member.name)}</span><span class="rounded-full ${evaluation?'bg-green-100 text-green-700':'bg-canvas text-muted'} px-2.5 py-1 text-xs font-bold">${evaluation?'已完成':'未填寫'}</span></div><p class="mt-2 text-xs leading-5 text-muted">${evaluation ? details : "尚未填寫組員評分"}${evaluation?.feedback ? `<br>回饋：${esc(evaluation.feedback)}` : ""}</p></div>`;
+    }).join("") || '<p class="text-sm text-muted">目前沒有組員。</p>';
+    return `<article class="rounded-2xl border border-line bg-canvas p-4"><div class="flex flex-wrap items-center justify-between gap-2"><div><h4 class="font-black text-brand">${esc(group.name)}</h4><p class="mt-1 text-xs text-muted">主題：${esc(group.topic || "尚未設定小組主題")}</p></div><span class="text-xs font-bold text-muted">${members.filter(member => (evaluations||[]).some(item => item.evaluator_id===member.student_id)).length} / ${members.length} 人完成</span></div><div class="mt-3 space-y-2">${rows}</div></article>`;
+  }).join("") || '<p class="text-sm text-muted">目前尚無小組資料。</p>';
+  const adminVoteCards = (groups||[]).map(group => {
+    const groupVotes = (votes||[]).filter(vote => vote.selected_groups.includes(group.group_no));
+    const voters = groupVotes.map(vote => nameOf(vote.student_id)).join("、");
+    const members = (students||[]).filter(student => Number(student.group_no) === Number(group.group_no));
+    return `<article class="rounded-2xl border border-line bg-canvas p-4"><div class="flex flex-wrap items-center justify-between gap-2"><div><h4 class="font-black text-brand">${esc(group.name)}</h4><p class="mt-1 text-xs text-muted">主題：${esc(group.topic || "尚未設定小組主題")}</p></div><span class="text-lg font-black text-brand">${groupVotes.length} 票</span></div><div class="mt-3 flex flex-wrap gap-2">${members.map(member=>`<span class="rounded-full border border-line bg-white px-3 py-1.5 text-xs font-bold text-muted">${esc(member.name)}</span>`).join("") || '<span class="text-xs text-muted">目前沒有組員</span>'}</div><p class="mt-3 text-xs leading-5 text-muted">${voters ? `投票同學：${esc(voters)}` : "目前尚無同學投票給此組"}</p></article>`;
+  }).join("") || '<p class="text-sm text-muted">目前尚無小組資料。</p>';
 
   $("admin-content").innerHTML = `
     <div class="grid gap-5 lg:grid-cols-[.9fr_1.1fr]">
@@ -835,10 +856,26 @@ async function renderAdmin(){
       <section class="rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">GROUP VOTING</p><h3 class="mt-1 text-xl font-black">各組分組投票</h3>
         <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[420px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">組別</th><th class="px-3 py-3">票數</th><th class="px-3 py-3">狀態</th></tr></thead><tbody>${voteGroupRows}</tbody></table></div></section>
     </div>
+    <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">TOPIC MANAGEMENT</p><h3 class="mt-1 text-xl font-black">管理者協助設定小組主題</h3><p class="mt-2 text-sm text-muted">可直接替忘記修改的組別更新報告主題，儲存後學生端會立即同步。</p><div class="mt-5 grid gap-3 md:grid-cols-2 lg:grid-cols-3">${adminTopicCards}</div></section>
+    <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">GROUP SELF-EVALUATION</p><h3 class="mt-1 text-xl font-black">各組小組自評明細</h3><p class="mt-2 text-sm text-muted">依組別列出同學看到的組員評分與回饋；管理者不限定某一組。</p><div class="mt-5 grid gap-4 lg:grid-cols-2">${adminEvalCards}</div></section>
+    <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">GROUP VOTING</p><h3 class="mt-1 text-xl font-black">各組分組投票明細</h3><p class="mt-2 text-sm text-muted">依組別列出小組成員、票數與投票同學。</p><div class="mt-5 grid gap-4 lg:grid-cols-2">${adminVoteCards}</div></section>
     <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">VOTE RECORDS</p><h3 class="mt-1 text-xl font-black">分組投票紀錄與時間</h3>
       <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[560px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">學生</th><th class="px-3 py-3">投票組別</th><th class="px-3 py-3">最後更新時間</th></tr></thead><tbody>${voteRows}</tbody></table></div></section>
     <section class="mt-5 rounded-3xl border border-line bg-white p-6 shadow-soft"><p class="text-sm font-bold text-brand">REFLECTION TRACKER</p><h3 class="mt-1 text-xl font-black">自評填寫名冊</h3>
       <div class="mt-5 overflow-x-auto"><table class="w-full min-w-[760px] text-left text-sm"><thead><tr class="border-b border-line text-xs text-muted"><th class="px-3 py-3">姓名</th><th class="px-3 py-3">組別</th><th class="px-3 py-3">填寫進度</th><th class="px-3 py-3">互評平均</th><th class="px-3 py-3">逐位評分明細</th><th class="px-3 py-3">質性回饋</th></tr></thead><tbody>${evalRows}</tbody></table></div></section>`;
+  document.querySelectorAll("[data-admin-topic-save]").forEach(button => button.onclick = async () => {
+    const groupId = button.dataset.adminTopicSave;
+    const input = document.querySelector(`[data-admin-topic-input="${groupId}"]`);
+    const topic = input.value.trim();
+    if(!topic){ toast("報告主題不可為空白"); return; }
+    button.disabled = true;
+    const { error } = await sb.from("groups").update({ topic, topic_updated_at:new Date().toISOString() }).eq("id", groupId);
+    button.disabled = false;
+    if(error){ toast("小組主題更新失敗："+error.message); return; }
+    toast("小組主題已更新");
+    await renderAdmin();
+    await refreshTeacherGroupView();
+  });
 }
 
 function renderAdminRoster(students, groups, targetId = "admin-content"){
