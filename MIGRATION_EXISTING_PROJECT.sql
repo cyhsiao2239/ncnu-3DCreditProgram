@@ -4,6 +4,26 @@
 -- 可重複執行。新專案請改執行 supabase_schema.sql，不要執行本檔。
 -- ============================================================================
 
+-- 0. 建立可由管理員新增的課程目錄，並保留既有文化創意產業課程。
+create table if not exists courses (
+  course_id text primary key,
+  course_name text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+insert into courses (course_id, course_name)
+values ('1142_CCI', '文化創意產業')
+on conflict (course_id) do update set course_name = excluded.course_name;
+
+alter table courses enable row level security;
+drop policy if exists "public read courses" on courses;
+create policy "public read courses" on courses for select using (true);
+drop policy if exists "teacher manage courses" on courses;
+create policy "teacher manage courses" on courses for all
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
 -- 1. 允許名冊先匯入、之後再補上組別。
 alter table students alter column group_no drop not null;
 

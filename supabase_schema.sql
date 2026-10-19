@@ -6,6 +6,20 @@
 create extension if not exists pgcrypto;
 
 -- ----------------------------------------------------------------------------
+-- 0. 課程目錄（每門課共用相同的分組、自評與投票流程）
+-- ----------------------------------------------------------------------------
+create table if not exists courses (
+  course_id text primary key,
+  course_name text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+insert into courses (course_id, course_name)
+values ('1142_CCI', '文化創意產業')
+on conflict (course_id) do update set course_name = excluded.course_name;
+
+-- ----------------------------------------------------------------------------
 -- 1. 課程期別（一個 term = 某課程的某個學期＋期中或期末）
 -- ----------------------------------------------------------------------------
 create table if not exists terms (
@@ -100,6 +114,13 @@ create table if not exists staff_members (
   unique (course_id, email),
   unique (course_id, login_id)
 );
+
+alter table courses enable row level security;
+drop policy if exists "public read courses" on courses;
+create policy "public read courses" on courses for select using (true);
+drop policy if exists "teacher manage courses" on courses;
+create policy "teacher manage courses" on courses for all
+  using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 -- ============================================================================
 -- Row Level Security

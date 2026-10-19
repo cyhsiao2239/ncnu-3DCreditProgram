@@ -117,7 +117,7 @@
   <div class="w-full max-w-sm rounded-[2rem] bg-white p-7 shadow-2xl">
     <div class="mb-6"><p class="text-sm font-bold text-brand">STUDENT LOGIN</p><h2 class="mt-2 text-2xl font-black">進入課程空間</h2><p id="login-sub" class="mt-2 text-sm text-muted">請輸入學號與姓名以驗證身分。</p></div>
     <form id="login-form" class="space-y-3">
-      <select id="login-course" class="w-full rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-brand"><option value="1142_CCI">1151 文化創意產業</option></select>
+      <select id="login-course" class="w-full rounded-xl border border-line px-4 py-3 text-sm outline-none focus:border-brand"></select>
       <input id="login-id" required placeholder="學號（例如：1101）" class="w-full rounded-xl border border-line px-4 py-3 outline-none focus:border-brand" />
       <input id="login-name" required placeholder="姓名（例如：王小明）" class="w-full rounded-xl border border-line px-4 py-3 outline-none focus:border-brand" />
       <p id="login-error" class="hidden rounded-xl bg-red-50 px-4 py-3 text-sm font-bold text-red-600"></p>
@@ -173,8 +173,8 @@
 /* ============================================================================
    設定區：換成你自己的 Supabase 專案資訊（Settings → API）
 ============================================================================ */
-const COURSE_ID = "1142_CCI";
-const COURSE_NAME = "文化創意產業";
+let COURSE_ID = "1142_CCI";
+let COURSE_NAME = "文化創意產業";
 const DEFAULT_ACADEMIC_YEAR = "1151";
 const VOTING_RULES = { maxVotes: 2, allowSelfGroupVote: true };
 const DELETE_CONFIRM_CODE = 7;
@@ -210,6 +210,34 @@ const groupRosterCache = new Map();
 let teacherEntry = "admin";
 let teacherSession = null;
 let studentIdleTimer = null;
+let courses = [];
+
+async function loadCourses(){
+  const { data, error } = await sb.from("courses").select("course_id,course_name").order("course_name");
+  if(error){
+    console.error("courses 載入失敗：", error);
+    courses = [{ course_id:COURSE_ID, course_name:COURSE_NAME }];
+  } else {
+    courses = data || [];
+    if(!courses.some(course => course.course_id === COURSE_ID)){
+      courses.unshift({ course_id:COURSE_ID, course_name:COURSE_NAME });
+    }
+  }
+  renderCourseOptions();
+}
+function renderCourseOptions(){
+  $("login-course").innerHTML = courses.map(course =>
+    `<option value="${esc(course.course_id)}" ${course.course_id===COURSE_ID?"selected":""}>${esc(course.course_name)}</option>`
+  ).join("");
+}
+function setCurrentCourse(courseId){
+  const course = courses.find(item => item.course_id === courseId);
+  if(!course) return false;
+  COURSE_ID = course.course_id;
+  COURSE_NAME = course.course_name;
+  renderCourseOptions();
+  return true;
+}
 
 function groupsGrouped(){
   const map = new Map();
@@ -372,6 +400,13 @@ function afterLogin(){
 $("login-form").onsubmit = async e => {
   e.preventDefault();
   $("login-error").classList.add("hidden");
+  if(!setCurrentCourse($("login-course").value)){
+    $("login-error").textContent="找不到所選課程，請重新整理頁面後再試。";
+    $("login-error").classList.remove("hidden");
+    return;
+  }
+  await loadActiveTermKey();
+  await refreshCurrentTermData();
   if(!currentTerm){ $("login-error").textContent="老師尚未匯入本期名冊，請聯絡老師。"; $("login-error").classList.remove("hidden"); return; }
   const id = $("login-id").value.trim(), name = $("login-name").value.trim();
   const { data, error } = await sb.rpc("login_check", { p_term_id: currentTerm.id, p_student_id: id, p_name: name });
@@ -683,7 +718,10 @@ async function renderTeacherControls(){
   panel.innerHTML = `<div class="flex flex-wrap items-end justify-between gap-4">
       <div><p class="text-sm font-bold text-brand">TEACHER ONLY</p><h3 class="mt-1 text-xl font-black">課程與評量階段</h3><p class="mt-1 text-sm text-muted">「開放中」是目前學生登入會用到的期別；下方檢視可切換查看歷史資料。</p></div>
       <div class="flex flex-wrap gap-2">
-        <label class="text-sm font-bold text-muted">檢視學年度<select id="view-year" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
+      <label class="text-sm font-bold text-muted">目前課程<select id="admin-course" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
+        ${courses.map(course => `<option value="${esc(course.course_id)}" ${course.course_id===COURSE_ID?"selected":""}>${esc(course.course_name)}</option>`).join("")}</select></label>
+      <button id="add-course" class="rounded-xl border border-brand px-3 py-2 text-sm font-bold text-brand hover:bg-brand/5">新增課程</button>
+      <label class="text-sm font-bold text-muted">檢視學年度<select id="view-year" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
           ${academicYears.map(year => `<option value="${esc(year)}" ${viewingAcademicYear===year?"selected":""}>${esc(year)}</option>`).join("")}</select></label>
         <label class="text-sm font-bold text-muted">檢視期別<select id="view-term" class="ml-2 rounded-xl border border-line bg-canvas px-3 py-2 font-bold text-ink">
           <option value="midterm" ${viewingTermKey==="midterm"?"selected":""}>期中</option>
@@ -707,6 +745,52 @@ async function renderTeacherControls(){
       </div></div>`;
   $("teacher-controls").innerHTML = ""; $("teacher-controls").appendChild(panel);
 
+  $("admin-course").onchange = async e => {
+    if(!setCurrentCourse(e.target.value)) return;
+    await loadActiveTermKey();
+    viewingTermKey = activeTermKey;
+    viewingAcademicYear = activeAcademicYear;
+    groupRosterCache.clear();
+    await renderTeacherControls();
+    await renderAdmin();
+    await refreshCurrentTermData();
+    await refreshTeacherGroupView();
+    if(teacherEntry==="import") await renderCourseImport();
+  };
+  $("add-course").onclick = async () => {
+    const courseId = prompt("請輸入課程代碼（英文、數字或底線，例如 CCI_1152）：", "");
+    if(courseId === null) return;
+    const normalizedId = courseId.trim();
+    if(!/^[A-Za-z0-9_]{2,40}$/.test(normalizedId)){ toast("課程代碼需為 2 至 40 個英數字或底線"); return; }
+    const courseName = prompt("請輸入課程名稱：", "");
+    if(courseName === null) return;
+    const normalizedName = courseName.trim();
+    if(!normalizedName){ toast("課程名稱不可為空白"); return; }
+    const academicYear = prompt("請輸入預設學年度（四位數字，例如 1151）：", DEFAULT_ACADEMIC_YEAR);
+    if(academicYear === null) return;
+    const normalizedYear = academicYear.trim();
+    if(!/^\d{4}$/.test(normalizedYear)){ toast("學年度請輸入四位數字，例如 1151"); return; }
+    const { data, error } = await sb.from("courses").insert({ course_id:normalizedId, course_name:normalizedName }).select("course_id,course_name").single();
+    if(error){
+      toast(error.code === "23505" ? "課程代碼已存在，請改用其他代碼" : "新增課程失敗："+error.message);
+      return;
+    }
+    courses = [...courses, data].sort((a,b)=>a.course_name.localeCompare(b.course_name));
+    setCurrentCourse(data.course_id);
+    const { error: settingsError } = await sb.from("course_settings").upsert({ course_id:COURSE_ID, active_academic_year:normalizedYear, active_term_key:"midterm", updated_at:new Date().toISOString() });
+    if(settingsError){ toast("課程已建立，但預設設定儲存失敗："+settingsError.message); return; }
+    const { error: termsError } = await sb.from("terms").upsert(
+      ["midterm","final"].map(termKey => ({ course_id:COURSE_ID, academic_year:normalizedYear, course_name:COURSE_NAME, term_key:termKey })),
+      { onConflict:"course_id,academic_year,term_key" }
+    );
+    if(termsError){ toast("課程已建立，但學年度建立失敗："+termsError.message); return; }
+    activeAcademicYear = normalizedYear; activeTermKey = "midterm";
+    viewingAcademicYear = activeAcademicYear; viewingTermKey = activeTermKey;
+    toast(`已新增課程「${COURSE_NAME}」，請在此課程匯入名冊`);
+    await renderTeacherControls();
+    await renderAdmin();
+    await refreshTeacherGroupView();
+  };
   $("view-year").onchange = async e => {
     viewingAcademicYear = e.target.value;
     await renderAdmin();
@@ -1221,6 +1305,7 @@ $("print-btn").onclick = exportPdf;
    啟動
 --------------------------------------------------------------------------- */
 (async function init(){
+  await loadCourses();
   const { data: { session } } = await sb.auth.getSession();
   if(session){
     teacherSession = session;

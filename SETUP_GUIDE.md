@@ -13,8 +13,8 @@
 1. 左側選單點 **SQL Editor** → **New query**。
 2. 開啟本次一併提供的 `supabase_schema.sql`，全選複製，貼到編輯器。
 3. 點右下角 **Run**。跑完應該顯示 Success，左側 **Table Editor** 會出現
-   `terms`、`groups`、`students`、`evaluations`、`votes`、`course_settings`、
-   `staff_members` 七張表。
+   `courses`、`terms`、`groups`、`students`、`evaluations`、`votes`、
+   `course_settings`、`staff_members` 八張表。
 
 ## 第三步：建立老師／助教帳號
 
@@ -60,6 +60,7 @@ const SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
 - 加入 `staff_members.login_id`，讓教師／TA 可使用員工編號／學號登入。
 - 加入學年度與期中／期末切換欄位。
 - 將舊版期別唯一鍵升級為「課程＋學年度＋期別」。
+- 建立課程目錄，讓管理者可在管理者中控台新增及切換不同課程。
 
 這支檔案可以安全重跑；若畫面顯示 constraint 已存在，不需要再執行其他 SQL。
 匯入 Excel 中的 `admin` 資料會寫入 `staff_members`，但不會建立
@@ -75,6 +76,13 @@ Supabase Authentication 帳號；每位教師／助教仍須先在 Authenticatio
 執行升級檔後，教師後台的「新增學年度」只會建立空白的期中與期末期別，不會複製舊名單。
 教師後台的「新增學年度」只會建立空白的期中與期末期別，不會複製舊名單。
 對某學年度匯入一次名冊時，系統會同步更新該學年度的期中與期末名單。
+
+### 新增不同課程
+
+登入「管理者活動中控台」後，在「課程與評量階段」區塊使用「新增課程」，
+輸入課程代碼與課程名稱。新增後可從「目前課程」切換課程；每門課的學年度、
+期中／期末開放設定、名冊、分組、自評、投票與成果報告都會彼此獨立，
+操作方式與「文化創意產業」相同。學生登入時也會先選擇要進入的課程。
 
 ## 第五步：本機測試
 
